@@ -1,0 +1,58 @@
+{
+  "source_run_dir": "/home/ganchangyi/code/PiD-Linear/outputs/linear-pid/kda_1-4-8-12",
+  "training": {
+    "layers": [
+      0,
+      1,
+      2,
+      4,
+      5,
+      6,
+      8,
+      9,
+      10,
+      12
+    ],
+    "weights_root": "/home/ganchangyi/huggingface_ckpts",
+    "index_root": "/home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_index",
+    "text_cache_root": "/home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_text_cache",
+    "gallery_root": "/home/ganchangyi/code/PiD-Linear/outputs/linear-pid/assets",
+    "batch_size": 4,
+    "grad_accum": 1,
+    "effective_batch": 0,
+    "workers": 4,
+    "threads": 1,
+    "seed": 42,
+    "lr_new": 0.0001,
+    "lr_backbone": 0.00001,
+    "weight_decay": 0.001,
+    "warmup": 500,
+    "lambda_out": 0,
+    "grad_clip": 1,
+    "local_mixing": true,
+    "activation_checkpointing": true,
+    "pit_chunk_size": 2048,
+    "keep_checkpoints": 3,
+    "max_steps": 0,
+    "log_steps": 10,
+    "swanlab_mode": "offline"
+  },
+  "presets": {
+    "4gpu": {
+      "output_root": "/home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10/node01",
+      "max_seconds": 0,
+      "save_steps": 5000,
+      "save_epochs": 1,
+      "validation_steps": 5000,
+      "validation_epochs": 1
+    },
+    "8gpu": {
+      "output_root": "/home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10/slurm",
+      "max_seconds": 516600,
+      "save_steps": 5000,
+      "save_epochs": 1,
+      "validation_steps": 5000,
+      "validation_epochs": 1
+    }
+  }
+}

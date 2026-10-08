@@ -1,0 +1,32 @@
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+      - id: trailing-whitespace
+        exclude_types: [python]
+        exclude: ^tests/.*/fixtures/.*
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+        exclude_types: [python]
+        exclude: ^tests/.*/fixtures/.*
+      - id: check-symlinks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.7
+    hooks:
+      - alias: ruff-check-only
+        id: ruff-check
+        stages: [manual]
+      - alias: ruff-fix
+        name: ruff fix
+        id: ruff-check
+        args: [--fix]
+      - alias: ruff-noqa
+        name: ruff noqa
+        id: ruff-check
+        args: [--add-noqa]
+        stages: [manual]
+      - id: ruff-format

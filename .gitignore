@@ -1,0 +1,50 @@
+# Python environments and generated files
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+envs/
+.cache/
+
+# Local tests and original PiD assets not included in the public repository
+/tests/
+/assets/
+/figures/
+/docker/
+test_*.py
+*_test.py
+
+# Local models, datasets, and preparation caches
+/weights/
+/huggingface_ckpts/
+/checkpoints/
+/raw_data/
+/data/
+/dataset/
+/datasets/
+*.safetensors
+*.pth
+*.pt
+*.ckpt
+*.tar
+*.tar.gz
+*.npy
+*.part
+
+# Training, evaluation, and tracking artifacts
+/outputs/
+/results/
+/logs/
+swanlog/
+*.log
+
+# Local credentials and editor settings
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+.DS_Store

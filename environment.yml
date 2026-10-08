@@ -1,0 +1,13 @@
+name: pid
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip>=25.1
+  - cmake
+  - ninja
+  - gcc=13.3.0
+  - gxx=13.3.0
+  - cuda=12.8
+  - cuda-nvcc=12.8
+  - cuda-toolkit=12.8
