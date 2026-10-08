@@ -30,7 +30,8 @@ class LinearPiDConfig:
     activation_checkpointing: bool = True
     pit_chunk_size: int = 0
     pit_kda: bool = False
-    pit_kda_heads: int = 64
+    pit_kda_heads: int = 16
+    pit_kda_compressed: bool = True
     save_steps: int = 5000
     save_epochs: int = 1
     keep_checkpoints: int = 3
@@ -67,6 +68,8 @@ class LinearPiDConfig:
     def run_dir(self):
         label = "-".join(map(str, self.layers)) or "full"
         suffix = f"_pit-kda-h{self.pit_kda_heads}" if self.pit_kda else ""
+        if self.pit_kda and self.pit_kda_compressed:
+            suffix = f"_pit-kda-compressed-h{self.pit_kda_heads}"
         return str(Path(self.output_root) / f"kda_{label}{suffix}")
 
     def to_dict(self):
@@ -80,7 +83,11 @@ class LinearPiDConfig:
             "ema_decay", "offload_text_encoder", "save_seconds",
             "validation_seconds", "quick_every", "full_every",
         }
-        return cls(**{key: value for key, value in values.items() if key not in legacy})
+        values = {key: value for key, value in values.items() if key not in legacy}
+        # The first PiT KDA checkpoints used the uncompressed architecture.
+        if values.get("pit_kda") and "pit_kda_compressed" not in values:
+            values["pit_kda_compressed"] = False
+        return cls(**values)
 
 
 def make_config():

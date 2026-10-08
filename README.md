@@ -169,7 +169,7 @@ bash scripts/compare_linear_pid_inference.sh \
 
 ### PiD-KDA-PiT 分支实验
 
-此分支支持去掉两层 PiT 的压缩／展开 Linear，在每个 patch 的 `256×16=4096` 维特征上直接运行 KDA。token 数保持不变，默认 64 heads、每个 head 64 维；保留原像素 AdaLN、FFN 和残差。
+此分支默认保留两层 PiT 已训练的压缩／展开 Linear，只把中间的 Full Attention 换为 KDA。Attention 宽度保持 1152，使用原来的 16 heads、每个 head 72 维；token 数、像素 AdaLN、FFN 和残差保持不变。
 
 下面命令加载已有十层 KDA checkpoint，比较原 PiT 与新 PiT 的 2K／4K 推理，保存四张图片、网络及 PiT 耗时、峰值显存和 `summary.json`。输入是已有推理工具生成的固定 `.pt` 条件文件；新 PiT KDA 随机初始化，图片不代表微调后的质量。更换参数时使用新的输出目录；原命令重跑会跳过已完成结果。
 
@@ -180,18 +180,20 @@ GPU_IDS=0 CPU_THREADS=1 bash scripts/compare_pit_kda.sh \
     --checkpoint ./outputs/linear-pid-kda10/kda_0-1-2-4-5-6-8-9-10-12 \
     --asset ./outputs/inference/2048/conditions/custom.pt \
     --asset ./outputs/inference/4096/conditions/custom.pt \
-    --heads 64 --conversion-seed 42 \
+    --compression keep --heads 16 --conversion-seed 42 \
     --steps 25 --cfg 5 --shift 6 --warmup 2 --network-repeats 5 \
     --threads 1 --output-dir ./outputs/pit-kda-comparison
 ```
 
 若决定微调新 PiT，训练时加入 `--pit-kda`。首次转换用 `--init-from`，恢复时使用同一输出目录及 `--resume auto`；新 PiT 参数使用新模块学习率，checkpoint 会记录 PiT 架构并严格检查恢复兼容性。
 
+之前的无压缩方案仍可通过推理参数 `--compression remove --heads 64`，或训练参数 `--pit-kda --pit-kda-uncompressed --pit-kda-heads 64` 使用。两种架构的 checkpoint 不能直接续训混用。
+
 ```bash
 conda activate linear-pid
 
 GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_linear_pid.sh \
-    --preset 4gpu --layers 10 --pit-kda --pit-kda-heads 64 \
+    --preset 4gpu --layers 10 --pit-kda --pit-kda-heads 16 \
     --init-from ./outputs/linear-pid-kda10/kda_0-1-2-4-5-6-8-9-10-12 \
     --init-weights raw --resume none \
     --weights-root ./weights --index-root ./data/linear_pid_index \

@@ -1,8 +1,4 @@
-"""Uncompressed PiT: one flattened P*P*pixel_dim token per patch, followed by KDA.
-
-The patch sequence length stays H/P * W/P. No learned spatial compression or
-expansion remains; the output is reshaped back to pixels before the residual.
-"""
+"""PiT KDA with pretrained compression, or the optional uncompressed variant."""
 
 from __future__ import annotations
 
@@ -19,8 +15,9 @@ class PatchKDA(nn.Module):
 
     def __init__(self, dim, num_heads=64, *, backend="fla"):
         super().__init__()
-        if dim % num_heads or dim // num_heads > 256 or backend not in {"fla", "reference"}:
-            raise ValueError("PiT KDA requires divisible dimensions, head_dim <=256 and a supported backend")
+        if (num_heads <= 0 or dim % num_heads or dim // num_heads > 256 or (dim // num_heads) % 4
+                or backend not in {"fla", "reference"}):
+            raise ValueError("PiT KDA requires head_dim divisible by 4 and <=256, and a supported backend")
         self.dim, self.num_heads, self.head_dim = dim, num_heads, dim // num_heads
         self.backend = backend
         self.qkv = nn.Linear(dim, 3 * dim, bias=False)
@@ -33,7 +30,7 @@ class PatchKDA(nn.Module):
 
     def set_context_parallel_group(self, group):
         if group is not None and group.size() > 1:
-            raise ValueError("Uncompressed PiT KDA supports DDP, not context parallelism")
+            raise ValueError("PiT KDA supports DDP, not context parallelism")
 
     def forward(self, x, pos, mask=None):
         if mask is not None:
@@ -85,18 +82,40 @@ class UncompressedPiTBlock(PiTBlock):
         return attention.reshape(-1, self.patch_size**2, self.pixel_dim)
 
 
-def convert_pit_attention(net, *, heads=64, backend="fla"):
-    """Remove the old attention and both Linear maps after strict source loading."""
+class CompressedPiTBlock(PiTBlock):
+    """Replace Full Attention only; retain the learned compression and expansion."""
+
+    def __init__(self, source, *, heads=None, backend="fla"):
+        nn.Module.__init__(self)
+        self.pixel_dim, self.context_dim = source.pixel_dim, source.context_dim
+        self.patch_size, self.attn_dim = source.patch_size, source.attn_dim
+        self.num_heads = source.num_heads if heads is None else heads
+        self.rope_mode = source.rope_mode
+        self.rope_ref_grid_h, self.rope_ref_grid_w = source.rope_ref_grid_h, source.rope_ref_grid_w
+        self.norm1, self.norm2, self.mlp = source.norm1, source.norm2, source.mlp
+        self.adaLN_modulation = source.adaLN_modulation
+        self.compress_to_attn = source.compress_to_attn
+        self.expand_from_attn = source.expand_from_attn
+        self.attn = PatchKDA(self.attn_dim, self.num_heads, backend=backend)
+        self._pos_cache, self._cp_group = {}, None
+
+
+def convert_pit_attention(net, *, heads=None, backend="fla", compressed=True):
+    """Convert after strict source loading; never reinitialize inherited Linear maps."""
     for index, old in enumerate(net.pixel_blocks):
-        if isinstance(old, UncompressedPiTBlock):
-            if old.num_heads != heads or old.attn.backend != backend:
+        requested_heads = heads if heads is not None else (old.num_heads if compressed else 64)
+        if isinstance(old, (UncompressedPiTBlock, CompressedPiTBlock)):
+            if (old.num_heads != requested_heads or old.attn.backend != backend
+                    or isinstance(old, CompressedPiTBlock) != compressed):
                 raise ValueError("Existing PiT KDA architecture differs")
             continue
         parameter = next(old.parameters())
-        replacement = UncompressedPiTBlock(old, heads=heads, backend=backend)
+        block_type = CompressedPiTBlock if compressed else UncompressedPiTBlock
+        replacement = block_type(old, heads=requested_heads, backend=backend)
         net.pixel_blocks[index] = replacement.to(device=parameter.device, dtype=parameter.dtype)
-    net.pixel_attn_hidden_size = net.patch_size**2 * net.pixel_hidden_size
-    net.pixel_num_groups = heads
+    net.pixel_attn_hidden_size = net.pixel_blocks[0].attn_dim
+    net.pixel_num_groups = net.pixel_blocks[0].num_heads
     net.pit_kda = True
-    net.pit_kda_heads = heads
+    net.pit_kda_heads = net.pixel_num_groups
+    net.pit_kda_compressed = compressed
     return net

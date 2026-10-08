@@ -280,7 +280,8 @@ def main():
         config.weights_root = args.weights_root
     if args.gallery_root:
         config.gallery_root = args.gallery_root
-    net = build_net(config.layers, config.local_mixing, pit_kda=config.pit_kda, pit_kda_heads=config.pit_kda_heads)
+    net = build_net(config.layers, config.local_mixing, pit_kda=config.pit_kda,
+                    pit_kda_heads=config.pit_kda_heads, pit_kda_compressed=config.pit_kda_compressed)
     net.load_state_dict(student_weights(payload, args.weights), strict=True)
     net = net.to(device=device, dtype=torch.bfloat16).eval()
     teacher_hash = payload["metadata"]["teacher_sha256"]

@@ -1,9 +1,9 @@
-"""Compare a trained PiD-KDA with its uncompressed PiT-KDA conversion.
+"""Compare a trained PiD-KDA with its PiT-KDA conversion, keeping compression by default.
 
 Prepared assets fix Gemma embeddings, latents and pixel-noise seeds. Each pair
 runs sequentially on the same GPU, with only one model resident. torchrun can
 distribute different asset pairs across GPUs. Completed cases are resumable.
-New PiT weights are random and untrained; this is a speed experiment.
+Only the new KDA attention is random and untrained; this is a speed experiment.
 """
 
 import argparse
@@ -45,7 +45,8 @@ def main():
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--asset", action="append", required=True)
     parser.add_argument("--output-dir", default="./outputs/pit-kda-comparison")
-    parser.add_argument("--heads", type=int, default=64, help="4096/64=64 dimensions per KDA head")
+    parser.add_argument("--compression", choices=("keep", "remove"), default="keep")
+    parser.add_argument("--heads", type=int, default=None, help="Default: 16 with compression, 64 without")
     parser.add_argument("--conversion-seed", type=int, default=42)
     parser.add_argument("--steps", type=int, default=25)
     parser.add_argument("--cfg", type=float, default=5)
@@ -54,10 +55,12 @@ def main():
     parser.add_argument("--warmup", type=int, default=2)
     parser.add_argument("--network-repeats", type=int, default=5)
     args = parser.parse_args()
+    args.heads = args.heads if args.heads is not None else (16 if args.compression == "keep" else 64)
+    dim = 1152 if args.compression == "keep" else 4096
     if min(args.steps, args.threads, args.warmup, args.network_repeats, args.heads) < 1:
         parser.error("Steps, threads, warmup, repeats and heads must be positive")
-    if 4096 % args.heads or 4096 // args.heads > 256:
-        parser.error("Heads must divide 4096 with head_dim <=256")
+    if dim % args.heads or dim // args.heads > 256 or (dim // args.heads) % 4:
+        parser.error(f"Heads must divide {dim} with head_dim divisible by 4 and <=256")
     if args.cfg < 1 or args.shift <= 0:
         parser.error("CFG must be >=1 and shift must be positive")
     if len({Path(path).stem for path in args.asset}) != len(args.asset):
@@ -85,6 +88,7 @@ def main():
             settings = {"checkpoint": str(checkpoint.resolve()), "variant": variant,
                         "asset_sha256": sha256_file(asset_path), "layers": config.layers,
                         "heads": args.heads, "conversion_seed": args.conversion_seed,
+                        "compression": args.compression,
                         "steps": args.steps, "cfg": args.cfg, "shift": args.shift,
                         "warmup": args.warmup, "network_repeats": args.network_repeats,
                         "threads": args.threads,
@@ -92,6 +96,7 @@ def main():
             if destination.with_suffix(".json").exists() and destination.with_suffix(".png").exists():
                 previous = json.loads(destination.with_suffix(".json").read_text())
                 previous["settings"].setdefault("threads", 1)
+                previous["settings"].setdefault("compression", "remove")
                 if previous["settings"] != settings:
                     raise ValueError("Existing settings differ; choose a new output directory")
                 continue
@@ -100,7 +105,7 @@ def main():
             net.load_state_dict(student_weights(payload), strict=True)
             if variant == "kda-pit":
                 torch.manual_seed(args.conversion_seed)
-                convert_pit_attention(net, heads=args.heads)
+                convert_pit_attention(net, heads=args.heads, compressed=args.compression == "keep")
             net.activation_checkpointing = False
             net = net.to(device=device, dtype=torch.bfloat16).eval().requires_grad_(False)
             print(f"{variant}: {asset['width']}x{asset['height']}, "

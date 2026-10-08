@@ -45,7 +45,8 @@ NETWORK_KWARGS = dict(
 )
 
 
-def build_net(layers=(), local_mixing=True, backend="fla", kwargs=None, *, pit_kda=False, pit_kda_heads=64):
+def build_net(layers=(), local_mixing=True, backend="fla", kwargs=None, *, pit_kda=False,
+              pit_kda_heads=16, pit_kda_compressed=True):
     net = PidNet(**(NETWORK_KWARGS if kwargs is None else kwargs))
     net.cache_repa_features = False
     net.pixel_embedder.compact_image_positions = True
@@ -54,7 +55,7 @@ def build_net(layers=(), local_mixing=True, backend="fla", kwargs=None, *, pit_k
     else:
         net.kda_layers = []
     if pit_kda:
-        convert_pit_attention(net, heads=pit_kda_heads, backend=backend)
+        convert_pit_attention(net, heads=pit_kda_heads, backend=backend, compressed=pit_kda_compressed)
     return net
 
 

@@ -227,7 +227,8 @@ def parse_args(argv=None):
             else None,
         )
     parser.add_argument("--no-local-mixing", action="store_true")
-    parser.add_argument("--pit-kda", action="store_true", help="Use uncompressed 4096-dimensional PiT KDA")
+    parser.add_argument("--pit-kda", action="store_true", help="Replace PiT Full Attention with KDA, retaining compression")
+    parser.add_argument("--pit-kda-uncompressed", action="store_true", help="Use the earlier 4096-dimensional PiT variant")
     parser.add_argument("--allow-batch-size-change", action="store_true",
                         help="Allow and record an effective batch change while restoring the full training state")
     parser.add_argument("--no-activation-checkpointing", action="store_true")
@@ -252,6 +253,11 @@ def parse_args(argv=None):
         config.pit_chunk_size = 2048
     config.local_mixing = not args.no_local_mixing
     config.activation_checkpointing = not args.no_activation_checkpointing
+    config.pit_kda_compressed = not args.pit_kda_uncompressed
+    if args.pit_kda_uncompressed and not config.pit_kda:
+        parser.error("--pit-kda-uncompressed requires --pit-kda")
+    if args.pit_kda_heads is None and args.pit_kda_uncompressed:
+        config.pit_kda_heads = 64
     if args.online_text:
         config.text_cache_root = ""
     if config.init_weights not in {"ema", "raw"} or config.swanlab_mode not in {"offline", "cloud", "disabled"}:
@@ -277,8 +283,10 @@ def parse_args(argv=None):
         parser.error("Limits, gallery intervals, distillation weight and weight decay must be nonnegative")
     if min(config.lr_new, config.lr_backbone, config.grad_clip) <= 0:
         parser.error("Learning rates and clip norm must be positive")
-    if config.pit_kda and (config.pit_kda_heads <= 0 or 4096 % config.pit_kda_heads or 4096 // config.pit_kda_heads > 256):
-        parser.error("PiT KDA heads must divide 4096 with head_dim <=256")
+    pit_dim = 1152 if config.pit_kda_compressed else 4096
+    if config.pit_kda and (config.pit_kda_heads <= 0 or pit_dim % config.pit_kda_heads
+                           or pit_dim // config.pit_kda_heads > 256 or (pit_dim // config.pit_kda_heads) % 4):
+        parser.error(f"PiT KDA heads must divide {pit_dim} with head_dim divisible by 4 and <=256")
     if config.init_from and config.resume not in {"auto", "none", ""}:
         parser.error("--init-from cannot be combined with an explicit --resume")
     if config.resume_from and (config.init_from or config.resume not in {"auto", "none", ""}):
@@ -363,9 +371,10 @@ def main(argv=None):
             raise ValueError("Cannot change the local mixing architecture while reusing a student")
         convert_attention(net, previous_layers, local_mixing=config.local_mixing)
         if source["config"].get("pit_kda", False):
-            if not config.pit_kda or source["config"].get("pit_kda_heads", 64) != config.pit_kda_heads:
+            if (not config.pit_kda or source["config"].get("pit_kda_heads", 64) != config.pit_kda_heads
+                    or source["config"].get("pit_kda_compressed", False) != config.pit_kda_compressed):
                 raise ValueError("A new stage must retain the existing PiT KDA architecture")
-            convert_pit_attention(net, heads=config.pit_kda_heads)
+            convert_pit_attention(net, heads=config.pit_kda_heads, compressed=config.pit_kda_compressed)
         weights = student_weights(source, "raw" if payload else config.init_weights)
         net.load_state_dict(weights, strict=True)
         convert_attention(net, config.layers, local_mixing=config.local_mixing)
@@ -373,7 +382,7 @@ def main(argv=None):
         load_original(net, config.teacher_path)
         convert_attention(net, config.layers, local_mixing=config.local_mixing)
     if config.pit_kda:
-        convert_pit_attention(net, heads=config.pit_kda_heads)
+        convert_pit_attention(net, heads=config.pit_kda_heads, compressed=config.pit_kda_compressed)
     freeze_student(net)
     net.activation_checkpointing = config.activation_checkpointing
     net.pit_chunk_size = config.pit_chunk_size

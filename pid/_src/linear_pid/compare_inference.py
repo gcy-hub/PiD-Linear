@@ -371,6 +371,7 @@ def main(argv=None):
                     if os.environ.get("CUDA_VISIBLE_DEVICES") else str(device.index)}
         base_settings = {"checkpoint": pinned, "original_sha256": original_hash, "layers": config.layers,
                          "pit_kda": config.pit_kda, "pit_kda_heads": config.pit_kda_heads,
+                         "pit_kda_compressed": config.pit_kda_compressed,
                          "local_mixing": config.local_mixing, "steps": args.steps, "cfg": args.cfg,
                          "shift": args.shift, "repeats": args.repeats, "sample_warmup": args.sample_warmup,
                          "network_repeats": args.network_repeats, "network_warmup": args.network_warmup,
@@ -394,14 +395,14 @@ def main(argv=None):
             if label == "trained":
                 convert_attention(net, config.layers, local_mixing=config.local_mixing)
                 if config.pit_kda:
-                    convert_pit_attention(net, heads=config.pit_kda_heads)
+                    convert_pit_attention(net, heads=config.pit_kda_heads, compressed=config.pit_kda_compressed)
                 net.load_state_dict(student_weights(payload, "raw"), strict=True)
             else:
                 load_original(net, config.teacher_path)
                 if label == "untrained-kda":
                     convert_attention(net, config.layers, local_mixing=config.local_mixing)
                     if config.pit_kda:
-                        convert_pit_attention(net, heads=config.pit_kda_heads)
+                        convert_pit_attention(net, heads=config.pit_kda_heads, compressed=config.pit_kda_compressed)
             net.activation_checkpointing = False
             net.pit_chunk_size = config.pit_chunk_size or 2048
             net = net.to(device=device, dtype=torch.bfloat16).eval().requires_grad_(False)

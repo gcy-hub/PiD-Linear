@@ -40,7 +40,8 @@ def main():
     torch.cuda.set_device(device)
     payload = load_checkpoint(resolve_checkpoint(args.checkpoint))
     config = LinearPiDConfig.from_dict(payload["config"])
-    net = build_net(config.layers, config.local_mixing, pit_kda=config.pit_kda, pit_kda_heads=config.pit_kda_heads)
+    net = build_net(config.layers, config.local_mixing, pit_kda=config.pit_kda,
+                    pit_kda_heads=config.pit_kda_heads, pit_kda_compressed=config.pit_kda_compressed)
     net.load_state_dict(student_weights(payload, args.weights), strict=True)
     net = net.to(device=device, dtype=torch.bfloat16).eval().requires_grad_(False)
     del payload
