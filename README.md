@@ -61,9 +61,23 @@ bash download/prepare_training.sh
 
 下载和准备完成后，保持数据集及模型的位置固定。该脚本完成准备后退出，不会启动训练。
 
+也可以跳过文本缓存，在训练时加载 Gemma 实时编码 caption。数据索引仍然必需：已有索引可直接复用；没有索引时，只执行下面的命令，然后使用下一节的在线 Gemma 训练命令。
+
+```bash
+conda activate linear-pid
+
+python scripts/prepare_linear_pid_data.py \
+    --dataset-root ./raw_data/MultiAspect-4K-1M \
+    --output-root ./raw_data/MultiAspect-4K-1M/linear_pid_index \
+    --workers 8 --validation-size 1024 --seed 42 \
+    --image-verification header --resume
+```
+
+如果同时跳过固定验证条件的准备，需要关闭训练中的生成验证。在线 Gemma 且关闭生成验证时，训练只需要 PiD 初始化权重、FLUX VAE、Gemma、原始图片和数据索引；Z-Image-Turbo 用于生成验证条件或后续纯 prompt 推理。
+
 ## 3. 正式训练
 
-首次运行加载原始 PiD，随机初始化 10 层 KDA，并微调整个可训练像素主干。使用 FM loss、冻结 VAE 和磁盘文本缓存；不创建教师网络或 EMA。下面配置的有效 batch 为 `4 卡 × 4 × 1 = 16`，KDA／继承主干的默认学习率分别为 `1e-4`／`1e-5`。
+首次运行加载原始 PiD，随机初始化 10 层 KDA，并微调整个可训练像素主干。使用 FM loss、冻结 VAE，默认读取磁盘文本缓存；不创建教师网络或 EMA。下面配置的有效 batch 为 `4 卡 × 4 × 1 = 16`，KDA／继承主干的默认学习率分别为 `1e-4`／`1e-5`。
 
 checkpoint、验证图片和 SwanLab 离线日志统一保存在 `outputs/linear-pid-kda10/kda_0-1-2-4-5-6-8-9-10-12/`。相同命令重复运行会恢复最近完整 checkpoint，包括优化器和训练进度，不会重新初始化 KDA。
 
@@ -98,6 +112,33 @@ bash scripts/train_linear_pid.sh \
 周期参数设为 `0` 表示关闭该条件。保存和验证周期可以分别设置；每次验证前也会保存对应 checkpoint。中断的验证会在续训时补完，已生成的样本会跳过。
 
 该命令持续训练至手动停止，不安装自动重启服务。中断后保持输出目录和 batch 配置不变，重新运行即可续训。要启动独立的新实验，请使用新的 `--output-root`；要改为首轮 4 层实验，可将 `--layers 10` 改为 `--layers 4`。
+
+**在线 Gemma 训练（无需文本缓存）**
+
+使用 `--online-text` 时，每个 GPU 上的训练进程加载冻结的 Gemma，实时编码当前 batch 的 caption。Gemma 始终驻留 GPU，只做无梯度前向；这样省去文本缓存的生成和磁盘空间，但增加显存占用和每步文本编码耗时。
+
+下面命令复用数据索引，关闭生成验证，无需提前准备文本缓存和固定验证条件。模型仍每 5,000 steps 或 1 epoch 保存一次，并记录 SwanLab 日志；输出使用独立目录，与上面的缓存训练示例分开。
+
+```bash
+conda activate linear-pid
+
+GPU_IDS=0,1,2,3 CPU_THREADS=1 \
+FLA_DISABLE_TENSOR_CACHE=1 PYTORCH_ALLOC_CONF=expandable_segments:True \
+bash scripts/train_linear_pid.sh \
+    --preset 4gpu --layers 10 --lambda-out 0 \
+    --weights-root ./weights \
+    --index-root ./raw_data/MultiAspect-4K-1M/linear_pid_index \
+    --online-text \
+    --output-root ./outputs/linear-pid-kda10-online \
+    --batch-size 4 --grad-accum 1 --workers 4 --threads 1 \
+    --pit-chunk-size 2048 \
+    --save-steps 5000 --save-epochs 1 \
+    --validation-steps 0 --validation-epochs 0 \
+    --swanlab-mode offline --resume auto \
+    --max-steps 0 --max-seconds 0
+```
+
+在线 Gemma 也支持生成验证：准备好固定验证条件后，添加 `--gallery-root ./outputs/linear-pid/assets`，并将验证周期恢复为 `--validation-steps 5000 --validation-epochs 1`。续训时保持相同的在线／缓存模式和输出目录；使用在线示例训练的模型进行推理时，将下一节的 `RUN_DIR` 改为 `./outputs/linear-pid-kda10-online/kda_0-1-2-4-5-6-8-9-10-12`。
 
 ## 4. 推理
 
