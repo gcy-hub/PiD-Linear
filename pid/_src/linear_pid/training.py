@@ -25,6 +25,7 @@ from tqdm import tqdm
 
 from pid._src.configs.linear_pid.config import LinearPiDConfig
 from pid._src.linear_pid.attention import FLA_COMMIT, convert_attention, resolve_layers
+from pid._src.linear_pid.pit_attention import convert_pit_attention
 from pid._src.linear_pid.checkpoint import (
     complete_checkpoints,
     load_checkpoint,
@@ -203,6 +204,7 @@ def parse_args(argv=None):
         "workers",
         "threads",
         "pit-chunk-size",
+        "pit-kda-heads",
         "seed",
         "warmup",
         "save-steps",
@@ -225,6 +227,7 @@ def parse_args(argv=None):
             else None,
         )
     parser.add_argument("--no-local-mixing", action="store_true")
+    parser.add_argument("--pit-kda", action="store_true", help="Use uncompressed 4096-dimensional PiT KDA")
     parser.add_argument("--allow-batch-size-change", action="store_true",
                         help="Allow and record an effective batch change while restoring the full training state")
     parser.add_argument("--no-activation-checkpointing", action="store_true")
@@ -274,6 +277,8 @@ def parse_args(argv=None):
         parser.error("Limits, gallery intervals, distillation weight and weight decay must be nonnegative")
     if min(config.lr_new, config.lr_backbone, config.grad_clip) <= 0:
         parser.error("Learning rates and clip norm must be positive")
+    if config.pit_kda and (config.pit_kda_heads <= 0 or 4096 % config.pit_kda_heads or 4096 // config.pit_kda_heads > 256):
+        parser.error("PiT KDA heads must divide 4096 with head_dim <=256")
     if config.init_from and config.resume not in {"auto", "none", ""}:
         parser.error("--init-from cannot be combined with an explicit --resume")
     if config.resume_from and (config.init_from or config.resume not in {"auto", "none", ""}):
@@ -357,12 +362,18 @@ def main(argv=None):
         if source["config"]["local_mixing"] != config.local_mixing:
             raise ValueError("Cannot change the local mixing architecture while reusing a student")
         convert_attention(net, previous_layers, local_mixing=config.local_mixing)
+        if source["config"].get("pit_kda", False):
+            if not config.pit_kda or source["config"].get("pit_kda_heads", 64) != config.pit_kda_heads:
+                raise ValueError("A new stage must retain the existing PiT KDA architecture")
+            convert_pit_attention(net, heads=config.pit_kda_heads)
         weights = student_weights(source, "raw" if payload else config.init_weights)
         net.load_state_dict(weights, strict=True)
         convert_attention(net, config.layers, local_mixing=config.local_mixing)
     else:
         load_original(net, config.teacher_path)
         convert_attention(net, config.layers, local_mixing=config.local_mixing)
+    if config.pit_kda:
+        convert_pit_attention(net, heads=config.pit_kda_heads)
     freeze_student(net)
     net.activation_checkpointing = config.activation_checkpointing
     net.pit_chunk_size = config.pit_chunk_size

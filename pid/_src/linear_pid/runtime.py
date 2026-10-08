@@ -8,6 +8,7 @@ from pathlib import Path
 import torch
 
 from pid._src.linear_pid.attention import JointKDA, convert_attention
+from pid._src.linear_pid.pit_attention import PatchKDA, convert_pit_attention
 from pid._src.linear_pid.text_cache import TextCacheReader
 from pid._src.linear_pid.text_encoder import NEGATIVE_PROMPT, PROMPT_PREFIX, GemmaTextEncoder
 from pid._src.networks.pid_net import PidNet
@@ -44,7 +45,7 @@ NETWORK_KWARGS = dict(
 )
 
 
-def build_net(layers=(), local_mixing=True, backend="fla", kwargs=None):
+def build_net(layers=(), local_mixing=True, backend="fla", kwargs=None, *, pit_kda=False, pit_kda_heads=64):
     net = PidNet(**(NETWORK_KWARGS if kwargs is None else kwargs))
     net.cache_repa_features = False
     net.pixel_embedder.compact_image_positions = True
@@ -52,6 +53,8 @@ def build_net(layers=(), local_mixing=True, backend="fla", kwargs=None):
         convert_attention(net, layers, local_mixing=local_mixing, backend=backend)
     else:
         net.kda_layers = []
+    if pit_kda:
+        convert_pit_attention(net, heads=pit_kda_heads, backend=backend)
     return net
 
 
@@ -79,7 +82,7 @@ def freeze_student(net):
 
 
 def optimizer_groups(net, config):
-    new_ids = {id(p) for module in net.modules() if isinstance(module, JointKDA) for p in module.parameters()}
+    new_ids = {id(p) for module in net.modules() if isinstance(module, (JointKDA, PatchKDA)) for p in module.parameters()}
     buckets = {}
     for name, parameter in net.named_parameters():
         if not parameter.requires_grad:

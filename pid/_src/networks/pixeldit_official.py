@@ -506,6 +506,12 @@ class PiTBlock(nn.Module):
         self._cp_group = cp_group
         self.attn.set_context_parallel_group(cp_group)
 
+    def _compress_pixels(self, pixels):
+        return self.compress_to_attn(pixels.flatten(1))
+
+    def _expand_pixels(self, attention):
+        return self.expand_from_attn(attention).view(-1, self.patch_size**2, self.pixel_dim)
+
     def _fetch_pos(self, height: int, width: int, device):
         key = (height, width)
         use_cache = not is_torch_compiling()
@@ -572,7 +578,7 @@ class PiTBlock(nn.Module):
         def compress(pixels, cond):
             shift, scale = modulation(cond, 0, 2)
             normalized = apply_adaln(self.norm1(pixels), shift, scale)
-            return self.compress_to_attn(normalized.flatten(1))
+            return self._compress_pixels(normalized)
 
         compressed = local_chunks(compress, x, s_cond).view(B, L_local, self.attn_dim)
         pos = self._fetch_pos(Hs, Ws, x.device)
@@ -584,7 +590,7 @@ class PiTBlock(nn.Module):
 
         def attention_residual(pixels, cond, attention):
             (gate,) = modulation(cond, 2, 3)
-            expanded = self.expand_from_attn(attention).view(-1, P2, C)
+            expanded = self._expand_pixels(attention)
             return pixels + gate * expanded
 
         pixels = local_chunks(attention_residual, x, s_cond, attended)
@@ -623,14 +629,12 @@ class PiTBlock(nn.Module):
         cond_params = cond_params.view(BL, P2, 6 * self.pixel_dim)
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = torch.chunk(cond_params, 6, dim=-1)
         x_norm = apply_adaln(self.norm1(x), shift_msa, scale_msa)
-        x_flat = x_norm.view(BL, P2 * self.pixel_dim)
-        x_comp = self.compress_to_attn(x_flat).view(B, L_local, self.attn_dim)
+        x_comp = self._compress_pixels(x_norm).view(B, L_local, self.attn_dim)
         # attention across patch tokens (L) — pos is full-length; the CP-aware
         # RotaryAttention gathers k/v across CP ranks internally.
         pos_comp = self._fetch_pos(Hs, Ws, x.device)
         attn_out = self.attn(x_comp, pos_comp, mask)  # [B, L_local, attn_dim]
-        attn_flat = self.expand_from_attn(attn_out.view(B * L_local, self.attn_dim))
-        attn_exp = attn_flat.view(BL, P2, self.pixel_dim)
+        attn_exp = self._expand_pixels(attn_out.reshape(B * L_local, self.attn_dim))
         # residual & MLP locally
         x = x + gate_msa * attn_exp
         mlp_out = self.mlp(apply_adaln(self.norm2(x), shift_mlp, scale_mlp))

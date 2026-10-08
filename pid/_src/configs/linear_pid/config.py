@@ -29,6 +29,8 @@ class LinearPiDConfig:
     local_mixing: bool = True
     activation_checkpointing: bool = True
     pit_chunk_size: int = 0
+    pit_kda: bool = False
+    pit_kda_heads: int = 64
     save_steps: int = 5000
     save_epochs: int = 1
     keep_checkpoints: int = 3
@@ -64,7 +66,8 @@ class LinearPiDConfig:
     @property
     def run_dir(self):
         label = "-".join(map(str, self.layers)) or "full"
-        return str(Path(self.output_root) / f"kda_{label}")
+        suffix = f"_pit-kda-h{self.pit_kda_heads}" if self.pit_kda else ""
+        return str(Path(self.output_root) / f"kda_{label}{suffix}")
 
     def to_dict(self):
         return asdict(self)

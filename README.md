@@ -167,4 +167,39 @@ bash scripts/compare_linear_pid_inference.sh \
 
 生成 4K 时，将 `RESOLUTION=2048` 改为 `RESOLUTION=4096`，重新执行该命令。更换 prompt、seed 或 checkpoint 时，也请更换输出目录，以免与已保存的结果冲突。只做推理不需要下载训练图片或构建训练文本缓存，但需要训练后的 checkpoint 和对应模型权重。
 
+### PiD-KDA-PiT 分支实验
+
+此分支支持去掉两层 PiT 的压缩／展开 Linear，在每个 patch 的 `256×16=4096` 维特征上直接运行 KDA。token 数保持不变，默认 64 heads、每个 head 64 维；保留原像素 AdaLN、FFN 和残差。
+
+下面命令加载已有十层 KDA checkpoint，比较原 PiT 与新 PiT 的 2K／4K 推理，保存四张图片、网络及 PiT 耗时、峰值显存和 `summary.json`。输入是已有推理工具生成的固定 `.pt` 条件文件；新 PiT KDA 随机初始化，图片不代表微调后的质量。更换参数时使用新的输出目录；原命令重跑会跳过已完成结果。
+
+```bash
+conda activate linear-pid
+
+GPU_IDS=0 CPU_THREADS=1 bash scripts/compare_pit_kda.sh \
+    --checkpoint ./outputs/linear-pid-kda10/kda_0-1-2-4-5-6-8-9-10-12 \
+    --asset ./outputs/inference/2048/conditions/custom.pt \
+    --asset ./outputs/inference/4096/conditions/custom.pt \
+    --heads 64 --conversion-seed 42 \
+    --steps 25 --cfg 5 --shift 6 --warmup 2 --network-repeats 5 \
+    --threads 1 --output-dir ./outputs/pit-kda-comparison
+```
+
+若决定微调新 PiT，训练时加入 `--pit-kda`。首次转换用 `--init-from`，恢复时使用同一输出目录及 `--resume auto`；新 PiT 参数使用新模块学习率，checkpoint 会记录 PiT 架构并严格检查恢复兼容性。
+
+```bash
+conda activate linear-pid
+
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_linear_pid.sh \
+    --preset 4gpu --layers 10 --pit-kda --pit-kda-heads 64 \
+    --init-from ./outputs/linear-pid-kda10/kda_0-1-2-4-5-6-8-9-10-12 \
+    --init-weights raw --resume none \
+    --weights-root ./weights --index-root ./data/linear_pid_index \
+    --text-cache-root ./data/linear_pid_text_cache \
+    --batch-size 1 --grad-accum 1 --workers 4 --threads 1 \
+    --lambda-out 0 --validation-steps 0 --validation-epochs 0 \
+    --save-steps 5000 --save-epochs 1 \
+    --output-root ./outputs/linear-pid-kda10-pit-kda
+```
+
 本项目沿用原 PiD 的 [Apache 2.0 许可证](LICENSE)；各模型和数据集按其各自的许可使用。

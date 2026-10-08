@@ -94,6 +94,10 @@ def load_checkpoint(path):
 
 def validate_resume(payload, config, fingerprint):
     saved = payload["config"]
+    if saved.get("pit_kda", False) != config.pit_kda or (
+        config.pit_kda and saved.get("pit_kda_heads", 64) != config.pit_kda_heads
+    ):
+        raise ValueError("Resume PiT architecture mismatch; use --init-from for a new stage")
     for key in [
         "layers",
         "local_mixing",
