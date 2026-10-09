@@ -167,4 +167,8 @@ bash scripts/compare_linear_pid_inference.sh \
 
 生成 4K 时，将 `RESOLUTION=2048` 改为 `RESOLUTION=4096`，重新执行该命令。更换 prompt、seed 或 checkpoint 时，也请更换输出目录，以免与已保存的结果冲突。只做推理不需要下载训练图片或构建训练文本缓存，但需要训练后的 checkpoint 和对应模型权重。
 
+## 5. 研究诊断：head 容量
+
+[Head-Capacity-Sensitivity 分支](https://github.com/gcy-hub/PiD-Linear/tree/Head-Capacity-Sensitivity)提供独立的 C0 特征校准诊断：固定 trained10 step 3314 的第 8 层和 value 维度 64，测试各 head 的 key 维度 32/48/64/80/96，并在 75% 总容量下比较均匀、按训练集误差分配和随机分配。主指标是已训练 KDA 的局部特征保留误差，不修改正式训练架构，也不直接推断图像质量或速度提升。完整运行、恢复、延迟范围及结果解释见[实验说明](docs/research/head-capacity-sensitivity.md)。
+
 本项目沿用原 PiD 的 [Apache 2.0 许可证](LICENSE)；各模型和数据集按其各自的许可使用。
