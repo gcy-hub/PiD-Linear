@@ -1,5 +1,7 @@
 # Linear-PiD
 
+本分支用于 **Spatial Error Diagnosis**：在不改变模型的情况下，诊断空间误差集中度与 latent 条件可预测性。运行命令和结果判读见 [空间误差诊断](docs/research/spatial-error-diagnosis.md)。
+
 基于 [PiD](https://huggingface.co/nvidia/PiD) 的 KDA 改造与恢复训练。下面以 **10 层 KDA、4 卡、每卡 batch 4** 为例，介绍从下载到推理的完整流程。所有命令均在仓库根目录执行，路径和 GPU 编号可自行修改。
 
 模型从未蒸馏的 PiD v1.5 FLUX 初始化，替换层为 `[0,1,2,4,5,6,8,9,10,12]`；其余 4 层 MMDiT Attention 和 2 层 PiT 保留。训练后的 KDA 权重由下面的训练阶段生成。
