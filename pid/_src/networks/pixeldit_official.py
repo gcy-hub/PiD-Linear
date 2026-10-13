@@ -814,7 +814,12 @@ class MMDiTBlockT2I(nn.Module):
         # 1) Joint attention with dual-stream
         x_norm = apply_adaln(self.norm_x1(x), shift_msa_x, scale_msa_x)
         y_norm = apply_adaln(self.norm_y1(y), shift_msa_y, scale_msa_y)
-        if getattr(self.attn, "is_linear_attention", False):
+        if getattr(self.attn, "is_vdn_attention", False):
+            attn_x, attn_y = self.attn(
+                x_norm, y_norm, pos_img, pos_txt, grid_size=grid_size,
+                text_valid_mask=text_valid_mask, attn_mask=attn_mask
+            )
+        elif getattr(self.attn, "is_linear_attention", False):
             attn_x, attn_y = self.attn(
                 x_norm, y_norm, pos_img, pos_txt, grid_size=grid_size, text_valid_mask=text_valid_mask
             )

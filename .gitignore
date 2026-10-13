@@ -48,3 +48,9 @@ swanlog/
 .idea/
 .vscode/
 .DS_Store
+
+# Local implementation ledger
+.superpowers/
+
+# Also ignore an output directory linked into a worktree
+/outputs
