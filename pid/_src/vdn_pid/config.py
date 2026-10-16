@@ -78,6 +78,7 @@ class VDNConfig:
     gallery_root: str = field(default_factory=lambda: os.getenv("PID_GALLERY_ROOT", "outputs/linear-pid/assets"))
     output_root: str = "outputs/pid-vdn"
     region_size: int = 8
+    memory_mode: str = "vda"
     stage: str = "all"
     preset: str = "4gpu"
     seed: int = 42
@@ -124,3 +125,12 @@ class VDNConfig:
         p["save"] = self.save_steps or p["save"]
         p["validate"] = (2000 if stage == "b" else 0) if self.validation_steps < 0 else self.validation_steps
         return p
+
+
+def verify_memory_mode(config, saved_config):
+    """Legacy checkpoints use VDA; never silently resume another state mechanism."""
+    if config.memory_mode not in ("vda", "fixed4"):
+        raise ValueError(f"Unknown memory_mode: {config.memory_mode}")
+    saved_mode = saved_config.get("memory_mode", "vda")
+    if saved_mode != config.memory_mode:
+        raise ValueError(f"Checkpoint memory_mode={saved_mode} differs from requested {config.memory_mode}")

@@ -1,249 +1,183 @@
-# PiD-VDN
+# PiD：固定空间四象限记忆
 
-将原始 PiD v1.5 FLUX 未蒸馏模型的 **14 层 MMDiT** 改为 **二维区域 Softmax + 双向 VDA**，两层 PiT 保持原样。局部 Softmax 的图像、文本 Q/K 和 PiT **保留 RoPE**，VDA 分支 **不使用 RoPE**。
+分支：`codex/spatially-disambiguated-delta-memory`。
 
-默认区域为 `8×8 token`。VDA 使用区域联合更新 `vdn_solve`、正反扫描、5×5 图像 K/V depthwise convolution 和有效文本初始记忆；移植来源及许可见 [VDN attribution](pid/_src/vdn_pid/vendor/NOTICE.md)。第一版只使用数据并行。
+将 PiD 的 **14 层 MMDiT Attention** 改为 **局部 Softmax + 固定四象限记忆**，两层 PiT 保持原样。局部 Softmax 是互不重叠的 `8×8 token` 窗口，直接访问文本，保留图像与文本 Q/K 的 RoPE。记忆分支不使用 RoPE：图像 K/V 经 `5×5 DWConv`，四个象限分别联合求解记忆，每个 Q 只读所属象限；取消双向 VDA 的扫描和遗忘衰减，包含自身写入。
+
+这是需要重新恢复训练的研究结构，测速不代表已保持质量。详见 [研究说明](docs/research/spatial-delta-memory.md)。原双向 VDA 入口仍支持 `--memory-mode vda`；本页串行脚本固定使用 `fixed4`。
 
 ## 1. 资源下载
 
-下载原始 PiD、FLUX VAE、Gemma、Z-Image-Turbo 和 MultiAspect-4K-1M。PiD 提供共享的冻结主干，VAE 编码训练图像条件，Gemma 编码 caption，Z-Image-Turbo 提前生成验证和纯 prompt 推理条件。接受 Gemma 的 Hugging Face 使用条款后执行：
+在新服务器拉取分支并安装环境。下文均在仓库根目录执行，路径可自行调整。
 
 ```bash
+git clone --branch codex/spatially-disambiguated-delta-memory \
+  https://github.com/gcy-hub/PiD-Linear.git
+cd PiD-Linear
 bash scripts/setup_linear_pid_env.sh
 conda activate linear-pid
-HF_ENDPOINT=https://huggingface.co hf auth login
 
-WEIGHTS_ROOT=./weights DATASET_ROOT=./raw_data/MultiAspect-4K-1M \
-MODEL_WORKERS=4 IMAGE_WORKERS=8 bash download/download_all.sh
+# Gemma 需要先在 Hugging Face 接受模型条款。
+HF_ENDPOINT=https://huggingface.co hf auth login
+python download/download_models.py --models pid vae gemma \
+  --weights-root ./weights --workers 4
 ```
 
-已有本地模型和数据可直接复用。单独下载命令见 [下载说明](download/README.md)。
-
-| 内容 | 参考硬盘空间 | 用途 |
+| 资源 | 参考空间 | 用途 |
 | --- | ---: | --- |
-| PiD v1.5 FLUX 未蒸馏权重 | 2.61 GiB | 初始化学生和提供固定教师计算路径 |
-| FLUX VAE | 0.31 GiB | 编码下采样图像条件 |
-| Gemma 2 2B IT | 4.89 GiB | 文本缓存、在线 caption/prompt 编码 |
-| Z-Image-Turbo | 30.59 GiB | 准备生成验证条件和纯 prompt 推理 latent |
-| 数据元数据 | 解压后约 1.7 GiB | 图片路径、caption 和索引 |
-| 原始图片 | 约 3.3 TiB | 训练图像与真实图像验证条件 |
+| PiD v1.5 FLUX 未蒸馏权重 | 2.61 GiB | 原始初始化、教师路径、增量 checkpoint 重建 |
+| FLUX VAE | 0.31 GiB | 编码训练图像的低分辨率条件 |
+| Gemma 2 2B IT | 4.89 GiB | 准备文本缓存，或训练时在线编码 |
+| `pid-vdn-50k.tar` | 约 166 GiB | 50K 图片与 caption，内含 A1/A2 的 20K 名单 |
+| 固定验证条件包 | 约 334 MiB | 已编码的验证文本、latent、mask、seed 与来源索引信息 |
+| 可选 50K 文本缓存 | 约 64.4 GiB | 避免训练时常驻 Gemma |
 
-空间是约 1M 样本的参考值；无需重新下载已有资源。
+图片包解压后还需约一份同等大小的空间。包内没有训练索引、文本缓存、模型或验证条件。已有模型可直接设置 `PID_WEIGHTS_ROOT`。复用验证条件时不需要 Z-Image-Turbo；重新从 prompt 生成 latent 才需要它，下载方法见 [下载说明](download/README.md)。
 
 ## 2. 训练准备
 
-先构建有效数据索引、文本缓存和固定验证条件。图片不复制，训练使用原分辨率图片经 Lanczos 缩放和中心裁剪后的 **2K 多长宽比桶**。
+### 原服务器：导出固定验证条件
+
+只需导出一次，再把这个小包传到新服务器。验证条件已经编码，不需要搬原始验证图片，也不需要重新运行 Z-Image-Turbo。
 
 ```bash
 conda activate linear-pid
-
-WEIGHTS_ROOT=./weights DATASET_ROOT=./raw_data/MultiAspect-4K-1M \
-GALLERY_ROOT=./outputs/linear-pid/assets \
-GPU_IDS=0,1,2,3 INDEX_WORKERS=4 TEXT_WORKERS=2 CPU_THREADS=1 TEXT_BATCH_SIZE=8 \
-bash download/prepare_training.sh
+python -m pid._src.vdn_pid.portable_data export-validation \
+  --index-root "$PID_INDEX_ROOT" --gallery-root "$PID_GALLERY_ROOT" \
+  --output ./pid-vdn-validation.tar
 ```
 
-| 准备结果 | 参考空间 | 作用 |
-| --- | ---: | --- |
-| `linear_pid_index/` | 约 1.8 GiB | 有效样本、训练/验证划分、分桶、mmap 偏移 |
-| `linear_pid_text_cache/` | 约 1.3 TiB | 训练直接读取 Gemma 编码，避免常驻 Gemma |
-| `outputs/linear-pid/assets/` | 约 0.42 GiB | 固定 2K/4K latent、caption、mask 和 seed |
-| `pid_vdn_subsets/` | 少量索引文件 | 嵌套 20K/50K 子集；不复制图片或文本缓存 |
+这里的两个环境变量指向原服务器已有索引和验证条件目录。导出会检查来源指纹与条件文件哈希。
 
-设置训练和推理共用的路径，再生成子集。已有索引和缓存时，从这里开始即可。子集按长宽比分层抽取，20K 包含于 50K；排除验证集合，保存样本 ID，并记录人物、文字、纹理 caption 关键词分布。重复命令可续做。
+### 新服务器：解压、建立训练索引
+
+填写两个包的位置。导入不复制图片、不重新抽样，保留原 20K/50K 成员关系，生成 loader 可读的 manifest、mmap 偏移与桶索引。
 
 ```bash
 conda activate linear-pid
+export DATA_ARCHIVE=./pid-vdn-50k.tar
+export VALIDATION_ARCHIVE=./pid-vdn-validation.tar
+mkdir -p dataset runtime/pid-vdn-validation
+tar -xf "$DATA_ARCHIVE" -C dataset
+tar -xf "$VALIDATION_ARCHIVE" -C runtime/pid-vdn-validation
 
-export PID_WEIGHTS_ROOT=./weights
-export PID_INDEX_ROOT=./raw_data/MultiAspect-4K-1M/linear_pid_index
-export PID_TEXT_CACHE_ROOT=./raw_data/MultiAspect-4K-1M/linear_pid_text_cache
-export PID_VDN_SUBSET_ROOT=./raw_data/MultiAspect-4K-1M/pid_vdn_subsets
-export PID_GALLERY_ROOT=./outputs/linear-pid/assets
+export PID_DATA_ROOT="$PWD/dataset/pid-vdn-50k"
+export PID_TRAINING_ROOT="$PID_DATA_ROOT/training"
+python -m pid._src.vdn_pid.portable_data import \
+  --package-root "$PID_DATA_ROOT" --output-root "$PID_TRAINING_ROOT" \
+  --source-index runtime/pid-vdn-validation/source_index.json \
+  --workers 4 --resume
 
-python -m scripts.prepare_pid_vdn_data --workers 4 --seed 42 --resume
+export PID_WEIGHTS_ROOT="$PWD/weights"
+export PID_INDEX_ROOT="$PID_TRAINING_ROOT/index"
+export PID_VDN_SUBSET_ROOT="$PID_TRAINING_ROOT/subsets"
+export PID_GALLERY_ROOT="$PWD/runtime/pid-vdn-validation/gallery"
+export PID_TEXT_CACHE_ROOT=""
 ```
 
-可以不生成文本缓存：将 `PID_TEXT_CACHE_ROOT` 设为空字符串，训练会加载 Gemma 实时编码。数据索引和训练子集仍然必需。没有固定验证条件时，显式添加 `--validation-steps 0` 可关闭生成验证。
+导入检查图片路径、ID、caption、桶与成员关系；完整解码由训练 loader 执行。`--resume` 跳过已完成且输入一致的结果。来源索引必须能够复现包内子集指纹，不能随意配对其他数据。
 
-## 3. 性能测试与正式训练
+| 结果 | 作用 |
+| --- | --- |
+| `training/index/` | 50K manifest、偏移、分桶；图片路径相对于包位置解析 |
+| `training/subsets/20000/` | A1/A2 共用的原 20K 成员 |
+| `training/subsets/50000/` | B 使用的全部 50K 成员 |
+| `training/prompts/data_jsons/` | 保留原 ID 的 caption 元数据，供缓存工具读取 |
+| `runtime/pid-vdn-validation/gallery/` | 固定 2K/4K 条件，不依赖旧服务器的图片路径 |
 
-### 训练前性能测试
+### 可选：提前缓存 50K 文本
 
-先比较 1K/2K/4K 下原始 Full Attention、局部 Softmax、VDA、完整 Hybrid 的速度和显存，分别测试 `4×4、8×8、16×16` 区域。默认推理重复20次，前向+反向重复5次。每项保存完成标记，重复命令可跳过已完成结果。
+不执行也能训练：保持 `PID_TEXT_CACHE_ROOT=""`，训练时在线加载 Gemma。缓存可减少训练显存与文本编码开销；示例使用单节点 8 卡，可调整 GPU 列表和进程数。
 
 ```bash
 conda activate linear-pid
-
-CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=1 \
-python -m scripts.benchmark_pid_vdn \
-  --regions 4 8 16 --resolutions 1024 2048 4096 \
-  --output-root outputs/pid-vdn/benchmark
-
-CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=1 \
-python -m scripts.benchmark_pid_vdn_network \
-  --region-size 8 --resolutions 2048 4096 \
-  --output-root outputs/pid-vdn/network-benchmark
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 OMP_NUM_THREADS=1 \
+torchrun --standalone --nproc_per_node=8 -m scripts.prepare_linear_pid_text_cache \
+  --dataset-root "$PID_TRAINING_ROOT/prompts" \
+  --output-root "$PID_TRAINING_ROOT/text_cache" \
+  --weights-root "$PID_WEIGHTS_ROOT" --batch-size 8 \
+  --workers 2 --threads 1 --max-seconds 0 --resume
+export PID_TEXT_CACHE_ROOT="$PID_TRAINING_ROOT/text_cache"
 ```
 
-第二条命令先加载原始 PiD、再加载未训练的 Hybrid，选择固定画廊中的 2048²／4096² 正方形条件，顺序生成同一条件下的图像，记录网络单步、MMDiT、PiT、25步解码时间和峰值显存。未训练生成结果只用于性能测试，不能据此评价训练质量。区域大小不会根据测速自动修改。
+中断后重复命令续做；也可以搬完整缓存后直接设置目录。每次新终端启动训练前，需重新设置上述路径环境变量。
 
-### 三阶段训练
+## 3. 正式训练：串行 A1 → A2 → B
 
-教师和学生共享一套冻结主干。教师执行原始 Full Attention，学生执行 Hybrid；B阶段教师禁用LoRA。**不常驻第二套教师、不使用CPU offload、不启用EMA。** A2/B启用激活checkpointing。三个阶段均使用蒸馏目标，FM loss只记录。
+三阶段共享冻结的原始 PiD 主干执行教师计算，不常驻第二套完整教师，不使用 CPU offload 或 EMA。A1 逐层对齐 Attention 输出，A2 对齐整网预测，B 增加 Q/K/V/O LoRA 并解冻 Softmax Gate。四象限未使用的衰减门冻结。
 
-| 阶段 | 更新次数 | 数据 | 有效batch | 可训练部分 |
-| --- | ---: | ---: | ---: | --- |
-| A1 | 500 | 20K | 8 | 新VDA参数；逐层Attention输出对齐 |
-| A2 | 1,000 | 同一批20K | 16 | 新VDA参数；整网预测对齐 |
-| B | 10,000 | 50K | 32 | VDA、Softmax门、Q/K/V/O LoRA（rank64、alpha64） |
+| 阶段 | 每卡 batch | GPU 总数 | 累积 | 有效 batch | 阶段总 step | 保存、验证周期 | 数据 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| A1 | 2 | 8 | 1 | 16 | 1,000 | 500 | 20K |
+| A2 | 4 | 8 | 1 | 32 | 4,000 | 2,000 | 同一批 20K |
+| B | 8 | 8 | 2 | 128 | 20,000 | 2,000 | 50K |
 
-A1一次教师前向同时对齐全部14层，每层重算学生Attention并立即反传，主干继续使用教师输出。A1总计500次更新，不乘以层数。FFN、AdaLN、PiT和latent注入参数全程冻结。Softmax门A1/A2固定0.99，B解冻。
+合计 25,000 次更新。A1 从原始 PiD 初始化新增模块；A2 在 A1 训练与验证完成后加载其最新完整 checkpoint，B 同样加载 A2。阶段切换保留参数，重建优化器和 scheduler。
 
-4卡每卡bs为1/2/4，均累积2次；8卡每卡bs为1/2/4，均累积1次。单卡或2卡自动增加累积，保持阶段有效batch。可显式设置 `--batch-size`、`--grad-accum`、`--effective-batch`，三者必须一致，不自动降低batch。
+先查看三个阶段的完整配置，不占用 GPU：
 
 ```bash
 conda activate linear-pid
-
-GPU_IDS=0,1,2,3 CPU_THREADS=1 PYTORCH_ALLOC_CONF=expandable_segments:True \
-bash scripts/train_pid_vdn.sh \
-  --preset 4gpu --stage all --region-size 8 --resume auto \
-  --workers 4 --threads 1 --output-root outputs/pid-vdn
+GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
+bash scripts/train_pid_vdn_fixed4.sh --dry-run
 ```
 
-也可分阶段运行；A2/B自动寻找输出目录下的上一阶段checkpoint，或用 `--init-from CHECKPOINT` 显式指定。
+单节点 8 卡正式训练，使用新的实验目录：
 
 ```bash
 conda activate linear-pid
-
-GPU_IDS=0,1,2,3 bash scripts/train_pid_vdn.sh --stage a1 --resume auto
-GPU_IDS=0,1,2,3 bash scripts/train_pid_vdn.sh --stage a2 --resume auto
-GPU_IDS=0,1,2,3 bash scripts/train_pid_vdn.sh --stage b  --resume auto
+GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
+bash scripts/train_pid_vdn_fixed4.sh \
+  --workers 2 --threads 1 --output-root outputs/pid-vdn-fixed4-8gpu
 ```
 
-双节点在每个节点各运行一次以下命令，两个节点分别设置 `NODE_RANK=0` 和 `NODE_RANK=1`，`MASTER_ADDR`使用节点0的可达地址；不会自动提交Slurm。
+后台运行可用下面的命令替代上一条：
 
 ```bash
 conda activate linear-pid
+mkdir -p outputs/pid-vdn-fixed4-8gpu
+nohup env GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
+  bash scripts/train_pid_vdn_fixed4.sh \
+  --workers 2 --threads 1 --output-root outputs/pid-vdn-fixed4-8gpu \
+  > outputs/pid-vdn-fixed4-8gpu/pipeline.log 2>&1 &
+```
 
+失败或暂停不会进入后续阶段。重复同一命令，会跳过已完成阶段，恢复当前阶段的权重、优化器、scheduler、随机状态及数据位置。已完成阶段的架构、batch、累积、目标 step 或保存、验证周期不同会被拒绝，不能把旧 500-step A1 当成新 1,000-step A1。
+
+保存和验证按 step 执行；捕获停止信号后在更新边界保存。目标 batch 不会自动缩小，尤其 B 的每卡 batch 8 需要在目标 GPU 验证显存。SwanLab 默认离线，添加 `--swanlab-mode cloud` 可在线记录。验证为 25 步、CFG 5、shift 6。
+
+### 双节点，各 4 卡
+
+两节点需共享相同路径的权重、数据和输出，并设置相同资源环境变量。将 `node0` 替换为节点 0 的可达地址；两边各执行一次，不要额外套 torchrun。
+
+```bash
+conda activate linear-pid
+# 节点 0
 NNODES=2 NODE_RANK=0 MASTER_ADDR=node0 MASTER_PORT=29583 \
 GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-bash scripts/train_pid_vdn.sh --preset 8gpu --stage all --resume auto \
-  --workers 4 --output-root outputs/pid-vdn
-```
+bash scripts/train_pid_vdn_fixed4.sh --workers 2 \
+  --output-root outputs/pid-vdn-fixed4-8gpu
 
-也可使用 Slurm 提交 A2 续训。先设置训练准备中的资源路径环境变量，再运行：
-
-```bash
-conda activate linear-pid
-export PID_VDN_CONDA_ROOT="$(conda info --base)"
-export PID_VDN_RUN="${PID_VDN_RUN:-$PWD/outputs/pid-vdn}"
-mkdir -p "$PID_VDN_RUN/slurm"
-sbatch --output="$PID_VDN_RUN/slurm/%x-%j.out" scripts/train_pid_vdn_8gpu.slurm
-```
-
-该脚本默认使用 `students` account、`gpujl` partition、2节点×4卡，每卡bs4、累积1、有效batch32。从同一目录恢复A2，训练到阶段总计2000步，每500步保存、每1000步验证；不使用定时重启。节点数、GPU数及6天时限由Slurm资源申请约束，阶段步数和周期可通过 `PID_VDN_STEPS`、`PID_VDN_SAVE_STEPS`、`PID_VDN_VALIDATION_STEPS` 覆盖。
-
-AdamW基础LR为1e-4，warmup后cosine至5e-6；A1/A2 warmup50，B warmup200。分支大/小参数倍率分别为1/5和0.4/2，B LoRA倍率1。weight decay为0，梯度裁剪A1每层0.1，A2/B全局1.0。冻结主干BF16，可训练参数及优化器FP32，计算BF16 autocast，VDA求解和扫描状态FP32。
-
-输出统一在 `outputs/pid-vdn/a1/`、`a2/`、`b/`。A1每50步、A2每100步保存，阶段结束验证；**B每2000阶段步保存并验证**，不依赖真实时间。保留最近3个恢复状态、验证节点和阶段最终状态。重复同一命令严格恢复优化器、scheduler、随机状态及数据进度；阶段切换只重建优化器和scheduler。4/8卡切换保持有效batch及样本进度，不承诺计算逐位一致。
-
-改变续训的有效batch时，显式添加 `--allow-batch-change`，并同时设置 `--batch-size`、`--grad-accum`、`--effective-batch`。例如四卡每卡bs8、累积1为有效batch32：
-
-```bash
-conda activate linear-pid
-GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pid_vdn.sh \
-  --stage a2 --resume auto --batch-size 8 --grad-accum 1 \
-  --effective-batch 32 --allow-batch-change --output-root outputs/pid-vdn
-```
-
-该方式保留权重、优化器和更新次数对应的LR进度，下一步按新batch抽样；已有样本计数不重算。checkpoint记录batch变更历史。上述参数也可用于下面的自动续训脚本。实际显存需求需在目标GPU上检查。
-
-checkpoint保存新增分支和LoRA权重及完整训练状态，因此恢复必须保留同一原始PiD权重。发布完整标记前的目录不会被恢复。普通训练命令被kill后可手动重复命令续训。
-
-续训时若需要调整总步数、保存或验证周期，显式添加 `--allow-schedule-change`。权重、优化器、数据进度和已完成步数继续恢复；延长总步数时保留断点处的学习率，再按剩余更新进行cosine衰减，变更记录写入checkpoint。warmup配置保持一致。
-
-### 自动循环续训（单节点，可选）
-
-已有训练需要定期重新启动时，运行以下命令一次即可。脚本在后台运行，复用输出目录中已保存的配置和最新完整断点；每轮从启动开始计时，20分钟后请求保存，预留3分钟完成当前更新或验证图像，然后退出并自动启动新进程。训练与控制进程都会更新PID，不需要重复输入命令。`--stage a2` 完成A2训练和验证后停止；改为 `--stage all` 则依次完成尚未结束的阶段。
-
-```bash
-conda activate linear-pid
-
+# 节点 1：在另一台节点执行
+NNODES=2 NODE_RANK=1 MASTER_ADDR=node0 MASTER_PORT=29583 \
 GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-bash scripts/train_pid_vdn_repeat.sh \
-  --stage a2 --cycle-seconds 1200 --grace-seconds 180 \
-  --workers 4 --output-root outputs/pid-vdn
-
-# 查看训练日志与循环状态
-tail -F outputs/pid-vdn/repeat/latest-training.log
-bash scripts/train_pid_vdn_repeat.sh --status --output-root outputs/pid-vdn
-
-# 保存后停止训练，同时停止自动重启
-bash scripts/train_pid_vdn_repeat.sh --stop --output-root outputs/pid-vdn
+bash scripts/train_pid_vdn_fixed4.sh --workers 2 \
+  --output-root outputs/pid-vdn-fixed4-8gpu
 ```
 
-断点仍保存在原阶段的 `checkpoints/` 中，循环日志放在 `repeat/`，不创建新的实验目录。验证中断后保留已经完成的图像，下一轮继续剩余图像。遇到OOM或配置错误会停止；连续三轮没有训练或验证进展也会停止，原因记录在 `repeat/controller.log`。同一输出目录只允许一个自动控制器，清理仅针对它启动的训练进程及后代。
-
-这适用于按进程运行时长终止的限制；如果管理员按用户、会话或整个任务统一终止，更新PID不能保证持续运行，届时仍需重新执行启动命令。
-
-SwanLab默认离线，可用 `--swanlab-mode cloud` 开启云端记录。监控重点为 `train/kd_loss`、A1逐层 `alignment/` 的图像/文本误差、FM指标、样本覆盖、LR、梯度范数、耗时和显存。生成验证使用固定条件和seed，25步、CFG5、shift6。
+导入的 50K 索引重新编号了行号，上述步骤用于按新配置开始完整实验。若搬本流程已有断点，同时搬输出目录和已导入索引；原百万行索引创建的旧断点不能直接配重编号索引。
 
 ## 4. 推理与评估
 
-对选定checkpoint生成固定画廊。多卡按样本分工，每卡各加载一套学生，不创建独立教师。输出包含原尺寸图像、局部裁剪、caption、采样设置及计时；重复同一命令跳过已完成图像。
+checkpoint 记录 `fixed4` 结构，推理自动重建。固定条件推理需要原始 PiD 权重和验证条件，不加载教师模型、Gemma 或 Z-Image-Turbo。
 
 ```bash
 conda activate linear-pid
-
-GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-bash scripts/sample_pid_vdn.sh \
-  --checkpoint outputs/pid-vdn/b/checkpoints/SELECTED_CHECKPOINT \
-  --suite qualitative --include-4k --output-dir outputs/pid-vdn/inference
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/sample_pid_vdn.sh \
+  --checkpoint outputs/pid-vdn-fixed4-8gpu/b/checkpoints/SELECTED_CHECKPOINT \
+  --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
+  --gallery-root "$PID_GALLERY_ROOT" --suite qualitative --include-4k \
+  --output-dir outputs/pid-vdn-fixed4-8gpu/inference
 ```
 
-使用训练后的模型进行完整速度对比：
-
-```bash
-conda activate linear-pid
-
-CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=1 \
-python -m scripts.benchmark_pid_vdn_network \
-  --checkpoint outputs/pid-vdn/b/checkpoints/SELECTED_CHECKPOINT \
-  --resolutions 2048 4096 --output-root outputs/pid-vdn/trained-benchmark
-```
-
-导出完整学生权重，随后将导出文件作为 `--checkpoint`，无需原始 PiD 基础权重即可运行固定条件推理。普通训练 checkpoint 为增量格式，需要同一原始基础权重。
-
-```bash
-conda activate linear-pid
-
-GPU_IDS=0 bash scripts/sample_pid_vdn.sh \
-  --checkpoint outputs/pid-vdn/b/checkpoints/SELECTED_CHECKPOINT \
-  --export outputs/pid-vdn/student.pt --export-only
-
-GPU_IDS=0,1 bash scripts/sample_pid_vdn.sh \
-  --checkpoint outputs/pid-vdn/student.pt --suite qualitative --include-4k \
-  --output-dir outputs/pid-vdn/student-inference
-```
-
-首次检查可添加 `--limit-per-resolution 1`，分别生成一张 2K 和 4K 图像。
-
-固定画廊读取提前保存的文本编码和latent，不会重新加载Gemma或Z-Image-Turbo。纯prompt使用场景需先通过对应文本编码器和生成管线准备条件；本分支新增接口首先服务于固定条件的质量与速度评估。
-
-对已训练 checkpoint 做空间扫描诊断：
-
-```bash
-conda activate linear-pid
-
-GPU_IDS=0 bash scripts/sample_pid_vdn.sh \
-  --checkpoint outputs/pid-vdn/student.pt --suite qualitative --limit-per-resolution 1 \
-  --include-4k --diagnostics --diagnostic-layers 0 7 13 \
-  --output-dir outputs/pid-vdn/spatial-diagnostics
-
-GPU_IDS=0 bash scripts/sample_pid_vdn.sh \
-  --checkpoint outputs/pid-vdn/student.pt --suite qualitative --limit-per-resolution 1 \
-  --include-4k --scan-order column --output-dir outputs/pid-vdn/column-gallery
-```
-
-`*.spatial.json` 记录相同特征按行／按列扫描的输出差异、水平／垂直邻接区域的纯遗忘门衰减，以及固定 K 和门后扰动 V 的输出响应。探针使用观测 QKV 的 FP32 副本，避免微小扰动被 BF16 舍入。采集早、中、晚的 CFG 前向，不改变原始生成轨迹；开启诊断时计时包含诊断开销。第二条命令只在推理时切换扫描顺序，用于查看方向差异和区域边界；训练默认仍按行正反扫描。
+输出原尺寸图像、局部裁剪、caption、seed、参数和耗时。多卡按图像分工，重复命令跳过已完成图像。增量 checkpoint 必须配合同一原始 PiD 基础权重。数据、模型、缓存、输出与本地测试均不上传 Git。

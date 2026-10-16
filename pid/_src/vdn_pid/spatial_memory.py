@@ -1,4 +1,4 @@
-"""Untrained global multi-bank VDA research prototype; not a quality-preserving conversion.
+"""Global multi-bank VDA research prototype; requires its own recovery training.
 
 Image banks start at zero, have no raster scan/decay, and include their own writes.
 Text still reaches every image query through the unchanged local Softmax branch.

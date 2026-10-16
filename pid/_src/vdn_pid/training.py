@@ -29,7 +29,7 @@ from pid._src.networks.flow_matching import FlowMatchingTrainer
 
 from .attention import convert_attention, execution_mode
 from .checkpoint import latest_state, load_delta, load_parent_delta, load_state, save_state
-from .config import STAGES, VDNConfig, resume_metadata
+from .config import STAGES, VDNConfig, resume_metadata, verify_memory_mode
 from .lora import configure_stage, optimizer_groups
 
 
@@ -77,6 +77,12 @@ def build_student(config, stage, device, load_base=True):
         load_original(net, config.teacher_path)
     net.requires_grad_(False).to(dtype=torch.bfloat16)
     convert_attention(net, config.region_size)
+    if config.memory_mode == "fixed4":
+        from .spatial_memory import replace_memory
+
+        replace_memory(net, mode="fixed", banks=4)
+    elif config.memory_mode != "vda":
+        raise ValueError(f"Unknown memory_mode: {config.memory_mode}")
     configure_stage(net, stage, config.lora_rank, config.lora_alpha)
     net.activation_checkpointing = config.activation_checkpointing
     net.pit_chunk_size = config.pit_chunk_size
@@ -171,6 +177,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "base_sha256": base_hash,
         "base_relative_path": str(Path(config.teacher_path).relative_to(config.weights_root)),
         "source_commit": "e262cb5770b3dc992d4f44f251cd17bbfe0c4d8b",
+        "memory_mode": config.memory_mode,
         "subset_fingerprint": dataset.metadata["fingerprint"],
         "data_fingerprint": dataset.metadata.get("source_fingerprint", dataset.metadata["fingerprint"]),
         "text_cache_fingerprint": dataset.text_cache.fingerprint if dataset.text_cache else None,
@@ -179,6 +186,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "swanlab_run_id": broadcast_object(uuid.uuid4().hex if rank == 0 else None, rank),
     }
     if payload:
+        verify_memory_mode(config, payload["config"])
         if payload["stage"] != stage:
             raise ValueError("Resume stage mismatch; use --init-from for stage transition")
         for key in ("region_size", "seed", "lora_rank", "lora_alpha"):
@@ -201,6 +209,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
     )
     if parent and not payload:
         previous = load_state(parent)
+        verify_memory_mode(config, previous["config"])
         if previous["metadata"]["base_sha256"] != base_hash or previous["config"]["region_size"] != config.region_size:
             raise ValueError("Parent base/region configuration mismatch")
         if previous["config"]["seed"] != config.seed:
@@ -263,7 +272,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
         tracker = swanlab
         swanlab.init(
             project="PiD-VDN",
-            experiment_name=stage,
+            experiment_name=stage if config.memory_mode == "vda" else f"{stage}-{config.memory_mode}",
             config={**config.to_dict(), **settings},
             mode="online" if config.swanlab_mode == "cloud" else config.swanlab_mode,
             log_dir=str(stage_dir / "swanlog"),
@@ -276,6 +285,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
             json.dumps(
                 {
                     "stage": stage,
+                    "memory_mode": config.memory_mode,
                     "batch": settings,
                     "trainable_parameters": sum(p.numel() for p in net.parameters() if p.requires_grad),
                     "frozen_parameters": sum(p.numel() for p in net.parameters() if not p.requires_grad),
@@ -519,6 +529,7 @@ def parse_args(argv=None):
         "subset_root",
         "gallery_root",
         "output_root",
+        "memory_mode",
         "stage",
         "preset",
         "resume",
@@ -555,6 +566,8 @@ def parse_args(argv=None):
     config = VDNConfig(**args)
     if config.stage not in ("all", *STAGES):
         parser.error("stage must be a1,a2,b,all")
+    if config.memory_mode not in ("vda", "fixed4"):
+        parser.error("memory-mode must be vda or fixed4")
     if config.region_size < 1 or config.workers < 0 or config.threads < 1 or config.log_steps < 1:
         parser.error("Invalid size/workers/threads/log interval")
     if config.max_steps < 0 or config.save_steps < 0 or config.validation_steps < -1 or config.lora_rank < 1:

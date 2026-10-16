@@ -109,6 +109,49 @@ equations, distinguish redundant keys from conflicting values, test the exact
 two-identical-keys counterexample, non-square sparse/dense equivalence, padding,
 batch isolation and state reset on repeated calls.
 
+## Fixed spatial four-bank recovery training
+
+`--memory-mode fixed4` reconstructs all 14 MMDiT memory branches as four fixed
+spatial banks. The local Softmax and both PiT blocks are unchanged. A fresh A1
+loads the original PiD base and initializes the new branches; it does not load
+the earlier A2 VDN weights used for the timing probe. Decay parameters are frozen
+because this mechanism has no scan. Active K/V convolutions, write gates, output
+normalization, output gates and independent output projections remain trainable.
+
+The existing A1 teacher hooks align the full attention outputs on identical
+teacher inputs. Checkpoints record the memory mode and reject a VDA/fixed4
+mismatch. Evaluation reconstructs the saved architecture automatically.
+
+```bash
+conda activate linear-pid
+export PID_VDN_SUBSET_ROOT=./dataset/MultiAspect-4K-1M/pid_vdn_subsets
+
+# Two GPUs, effective batch 8 = 2 GPUs x batch 1 x accumulation 4.
+# The launcher detaches itself, saves/restarts each cycle and stops after A1.
+GPU_IDS=0,1 CPU_THREADS=1 bash scripts/train_pid_vdn_repeat.sh \
+  --stage a1 --memory-mode fixed4 --region-size 8 \
+  --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
+  --text-cache-root "$PID_TEXT_CACHE_ROOT" --subset-root "$PID_VDN_SUBSET_ROOT" \
+  --gallery-root "$PID_GALLERY_ROOT" --output-root outputs/pid-vdn-fixed4 \
+  --batch-size 1 --grad-accum 4 --effective-batch 8 \
+  --max-steps 500 --save-steps 50 --log-steps 1 \
+  --workers 2 --threads 1 --swanlab-mode offline \
+  --cycle-seconds 1200 --grace-seconds 180
+
+# The same command resumes an interrupted run. Status and logs:
+python -m scripts.repeat_pid_vdn --status --output-root outputs/pid-vdn-fixed4
+tail -f outputs/pid-vdn-fixed4/repeat/latest-training.log
+```
+
+Each cycle completes an optimizer update, saves full state and exits; a fresh
+controller and training process resume from the latest complete checkpoint.
+The grace period is for saving/cleanup, not additional planned training. Unexpected
+training errors and OOM stop the controller instead of retrying indefinitely.
+If the administrator kills the entire controller process tree simultaneously,
+rerun the command manually; a controller cannot restart itself after it is killed.
+A1 uses the existing 20K subset and validates the fixed gallery when its target
+steps are complete. Gallery progress is also resumable between cycles.
+
 ## First run: 2026-10-16
 
 All 100 held-out images and 900 layer/time records completed. Eight full-network

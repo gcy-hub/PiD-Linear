@@ -7,6 +7,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from .attention import JointVDN
+from .spatial_memory import SpatialDeltaMemory
 from .vendor.gates import OutputGate
 from .vendor.layers import FrameKDAAlpha
 from .vendor.rms_norm import RMSNorm
@@ -54,6 +55,9 @@ def configure_stage(net, stage, rank=64, alpha=64):
         if not isinstance(m, JointVDN):
             raise ValueError("Expected PiD-VDN model")
         m.linear_attention.requires_grad_(True)
+        if isinstance(m.linear_attention, SpatialDeltaMemory):
+            # Global bank solves have no decay/scan; exclude the retained unused module.
+            m.linear_attention.base.alpha.requires_grad_(False)
         m.softmax_gate_x.requires_grad_(stage == "b")
         m.softmax_gate_y.requires_grad_(stage == "b")
         if stage == "b":

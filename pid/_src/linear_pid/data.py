@@ -322,7 +322,13 @@ class RawImageDataset(Dataset):
             self._stream = (self.root / "manifest.jsonl").open("rb")
             self._pid = os.getpid()
         self._stream.seek(int(self.offsets[row]))
-        return json.loads(self._stream.readline())
+        record = json.loads(self._stream.readline())
+        if "path" in record and not Path(record["path"]).is_absolute():
+            base = Path(self.metadata.get("dataset_root", "."))
+            if not base.is_absolute():
+                base = self.root / base
+            record["path"] = str((base / record["path"]).resolve())
+        return record
 
     def __getstate__(self):
         state = self.__dict__.copy()

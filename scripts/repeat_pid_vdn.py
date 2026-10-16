@@ -148,6 +148,7 @@ def training_command(root, stage, request):
             "subset_root",
             "gallery_root",
             "region_size",
+            "memory_mode",
             "seed",
             "workers",
             "threads",

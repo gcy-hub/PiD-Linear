@@ -82,7 +82,7 @@ def render_gallery(
 ):
     cases, metadata = asset_cases(config.gallery_root, "quick" if suite == "quick" else "full", include_4k)
     source = json.loads((Path(config.index_root) / "index.json").read_text())
-    if metadata["data_fingerprint"] != source["fingerprint"]:
+    if metadata["data_fingerprint"] != source.get("source_fingerprint", source["fingerprint"]):
         raise ValueError("Gallery/source index mismatch")
     if limit:
         cases = cases[:limit]
@@ -115,6 +115,8 @@ def render_gallery(
         "diagnostics": diagnostics,
         "diagnostic_layers": diagnostic_layers,
     }
+    if getattr(config, "memory_mode", "vda") != "vda":
+        settings["memory_mode"] = config.memory_mode
     try:
         with execution_mode(net, inference=True), torch.no_grad():
             for case in tqdm(cases[rank::world], desc=f"VDN gallery rank {rank}"):
