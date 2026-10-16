@@ -77,6 +77,8 @@ def render_gallery(
     limit_per_resolution=0,
     diagnostics=False,
     diagnostic_layers=None,
+    should_stop=None,
+    completion=None,
 ):
     cases, metadata = asset_cases(config.gallery_root, "quick" if suite == "quick" else "full", include_4k)
     source = json.loads((Path(config.index_root) / "index.json").read_text())
@@ -91,6 +93,7 @@ def render_gallery(
     was_training = net.training
     net.eval()
     measurements = []
+    complete = True
     if model_identity is None:
         import hashlib
 
@@ -115,6 +118,11 @@ def render_gallery(
     try:
         with execution_mode(net, inference=True), torch.no_grad():
             for case in tqdm(cases[rank::world], desc=f"VDN gallery rank {rank}"):
+                # No collectives here: ranks may own different numbers of cases.
+                # Finish a whole image before honoring the deadline/stop signal.
+                if should_stop is not None and should_stop():
+                    complete = False
+                    break
                 identity = f"{case['kind']}_{case['ordinal']:03d}_{case['resolution']}"
                 path = output / (identity + ".png")
                 done = output / (identity + ".done.json")
@@ -192,6 +200,8 @@ def render_gallery(
     finally:
         net.train(was_training)
     atomic_json(output / f"measurements_rank_{rank}.json", measurements)
+    if completion is not None:
+        completion["complete"] = complete
     return measurements
 
 

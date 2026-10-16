@@ -1,5 +1,6 @@
 """Portable PiD-VDN architecture and stage presets."""
 
+import math
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -10,6 +11,58 @@ STAGES = {
     "b": dict(steps=10000, batch=4, effective=32, save=2000, warmup=200),
 }
 BASE_RELATIVE = "PiD/checkpoints/PiD_v1pt5_res2kto4k_sr4x_official_flux_undistilled/model_ema_bf16.pth"
+
+
+def resume_metadata(
+    metadata, settings, progress, allow_batch_change=False, allow_schedule_change=False, scheduler_state=None
+):
+    """Keep update-based scheduling; record explicit changes to future batch draws."""
+    previous = metadata["settings"]
+    if previous["warmup"] != settings["warmup"]:
+        raise ValueError("Resume stage settings warmup mismatch")
+    changed = {key: settings[key] for key in ("steps", "save", "validate") if previous[key] != settings[key]}
+    if changed and not allow_schedule_change:
+        raise ValueError(f"Resume stage settings {next(iter(changed))} mismatch; use --allow-schedule-change")
+    schedule_history = list(metadata.get("schedule_changes", []))
+    extension = metadata.get("lr_extension")
+    if changed:
+        if settings["steps"] <= progress["stage_step"]:
+            raise ValueError("New total steps must exceed the restored stage step")
+        schedule_history.append(
+            dict(
+                stage_step=progress["stage_step"],
+                cursor=progress["cursor"],
+                previous={key: previous[key] for key in changed},
+                settings=changed,
+            )
+        )
+        if "steps" in changed:
+            if scheduler_state is None:
+                raise ValueError("Schedule extension requires restored scheduler state")
+            factors = [lr / base for lr, base in zip(scheduler_state["_last_lr"], scheduler_state["base_lrs"])]
+            if not factors or not all(math.isclose(f, factors[0], rel_tol=1e-9) for f in factors):
+                raise ValueError("Restored LR groups do not share a schedule factor")
+            extension = dict(start_step=progress["stage_step"], start_factor=factors[0], end_step=settings["steps"])
+    history = list(metadata.get("batch_changes", []))
+    if previous["effective"] != settings["effective"]:
+        if not allow_batch_change:
+            raise ValueError("Resume stage settings effective mismatch; use --allow-batch-change")
+        history.append(
+            dict(
+                stage_step=progress["stage_step"],
+                cursor=progress["cursor"],
+                samples_seen=progress["samples_seen"],
+                previous_effective=previous["effective"],
+                effective=settings["effective"],
+            )
+        )
+    return {
+        **metadata,
+        "settings": settings,
+        "batch_changes": history,
+        "schedule_changes": schedule_history,
+        "lr_extension": extension,
+    }
 
 
 @dataclass
@@ -33,6 +86,8 @@ class VDNConfig:
     batch_size: int = 0
     grad_accum: int = 0
     effective_batch: int = 0
+    allow_batch_change: bool = False
+    allow_schedule_change: bool = False
     max_steps: int = 0
     max_seconds: int = 0
     save_steps: int = 0

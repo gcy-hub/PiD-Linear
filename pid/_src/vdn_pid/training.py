@@ -29,7 +29,7 @@ from pid._src.networks.flow_matching import FlowMatchingTrainer
 
 from .attention import convert_attention, execution_mode
 from .checkpoint import latest_state, load_delta, load_parent_delta, load_state, save_state
-from .config import STAGES, VDNConfig
+from .config import STAGES, VDNConfig, resume_metadata
 from .lora import configure_stage, optimizer_groups
 
 
@@ -83,7 +83,11 @@ def build_student(config, stage, device, load_base=True):
     return net.to(device)
 
 
-def lr_factor(step, total, warmup):
+def lr_factor(step, total, warmup, extension=None):
+    if extension:
+        start, end = extension["start_step"], extension["end_step"]
+        fraction = max(0.0, min(1.0, (step - start) / max(1, end - start)))
+        return 0.05 + (extension["start_factor"] - 0.05) * 0.5 * (1 + math.cos(math.pi * fraction))
     if step < warmup:
         return (step + 1) / warmup
     fraction = min(1.0, (step - warmup) / max(1, total - warmup))
@@ -183,10 +187,14 @@ def run_stage(config, stage, rank, world, device, parent=None):
         for key in ("base_sha256", "subset_fingerprint", "text_cache_fingerprint"):
             if payload["metadata"][key] != metadata[key]:
                 raise ValueError(f"Resume {key} mismatch")
-        for key in ("steps", "effective", "warmup", "save", "validate"):
-            if payload["metadata"]["settings"][key] != settings[key]:
-                raise ValueError(f"Resume stage settings {key} mismatch")
-        metadata = {**payload["metadata"], "settings": settings}
+        metadata = resume_metadata(
+            payload["metadata"],
+            settings,
+            payload["progress"],
+            config.allow_batch_change,
+            config.allow_schedule_change,
+            payload["scheduler"],
+        )
     net = build_student(config, stage, device)
     progress = dict(
         stage_step=0, total_step=0, cursor=0, samples_seen=0, seen_rows=[], skipped_batches=0, validation_pending=False
@@ -222,7 +230,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
     )
     optimizer = torch.optim.AdamW(optimizer_groups(net, stage), betas=(0.9, 0.999), fused=device.type == "cuda")
     scheduler = torch.optim.lr_scheduler.LambdaLR(
-        optimizer, lambda step: lr_factor(step, settings["steps"], settings["warmup"])
+        optimizer, lambda step: lr_factor(step, settings["steps"], settings["warmup"], metadata.get("lr_extension"))
     )
     if payload:
         optimizer.load_state_dict(payload["optimizer"])
@@ -317,6 +325,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
             return
         from .evaluation import render_gallery
 
+        completion = {}
         with torch.random.fork_rng(devices=[device.index]):
             render_gallery(
                 net,
@@ -326,10 +335,11 @@ def run_stage(config, stage, rank, world, device, parent=None):
                 world,
                 tracker,
                 progress["total_step"],
+                should_stop=stopping,
+                completion=completion,
             )
-        if dist.is_initialized():
-            dist.barrier()
-        progress["validation_pending"] = False
+        # Exactly one collective after each rank finishes or pauses its own cases.
+        progress["validation_pending"] = not consensus(completion["complete"], device)
         save(milestone=True)
 
     bar = tqdm(total=settings["steps"], initial=progress["stage_step"], desc=f"{stage} updates", disable=rank != 0)
@@ -536,6 +546,8 @@ def parse_args(argv=None):
     ):
         parser.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
     parser.add_argument("--no-activation-checkpointing", action="store_true")
+    parser.add_argument("--allow-batch-change", action="store_true")
+    parser.add_argument("--allow-schedule-change", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = vars(parser.parse_args(argv))
     dry = args.pop("dry_run")

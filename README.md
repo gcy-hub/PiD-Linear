@@ -132,11 +132,60 @@ bash scripts/train_pid_vdn.sh --preset 8gpu --stage all --resume auto \
   --workers 4 --output-root outputs/pid-vdn
 ```
 
+也可使用 Slurm 提交 A2 续训。先设置训练准备中的资源路径环境变量，再运行：
+
+```bash
+conda activate linear-pid
+export PID_VDN_CONDA_ROOT="$(conda info --base)"
+export PID_VDN_RUN="${PID_VDN_RUN:-$PWD/outputs/pid-vdn}"
+mkdir -p "$PID_VDN_RUN/slurm"
+sbatch --output="$PID_VDN_RUN/slurm/%x-%j.out" scripts/train_pid_vdn_8gpu.slurm
+```
+
+该脚本默认使用 `students` account、`gpujl` partition、2节点×4卡，每卡bs4、累积1、有效batch32。从同一目录恢复A2，训练到阶段总计2000步，每500步保存、每1000步验证；不使用定时重启。节点数、GPU数及6天时限由Slurm资源申请约束，阶段步数和周期可通过 `PID_VDN_STEPS`、`PID_VDN_SAVE_STEPS`、`PID_VDN_VALIDATION_STEPS` 覆盖。
+
 AdamW基础LR为1e-4，warmup后cosine至5e-6；A1/A2 warmup50，B warmup200。分支大/小参数倍率分别为1/5和0.4/2，B LoRA倍率1。weight decay为0，梯度裁剪A1每层0.1，A2/B全局1.0。冻结主干BF16，可训练参数及优化器FP32，计算BF16 autocast，VDA求解和扫描状态FP32。
 
 输出统一在 `outputs/pid-vdn/a1/`、`a2/`、`b/`。A1每50步、A2每100步保存，阶段结束验证；**B每2000阶段步保存并验证**，不依赖真实时间。保留最近3个恢复状态、验证节点和阶段最终状态。重复同一命令严格恢复优化器、scheduler、随机状态及数据进度；阶段切换只重建优化器和scheduler。4/8卡切换保持有效batch及样本进度，不承诺计算逐位一致。
 
-checkpoint保存新增分支和LoRA权重及完整训练状态，因此恢复必须保留同一原始PiD权重。发布完整标记前的目录不会被恢复。没有定时重启；进程被kill后手动重复命令续训。
+改变续训的有效batch时，显式添加 `--allow-batch-change`，并同时设置 `--batch-size`、`--grad-accum`、`--effective-batch`。例如四卡每卡bs8、累积1为有效batch32：
+
+```bash
+conda activate linear-pid
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pid_vdn.sh \
+  --stage a2 --resume auto --batch-size 8 --grad-accum 1 \
+  --effective-batch 32 --allow-batch-change --output-root outputs/pid-vdn
+```
+
+该方式保留权重、优化器和更新次数对应的LR进度，下一步按新batch抽样；已有样本计数不重算。checkpoint记录batch变更历史。上述参数也可用于下面的自动续训脚本。实际显存需求需在目标GPU上检查。
+
+checkpoint保存新增分支和LoRA权重及完整训练状态，因此恢复必须保留同一原始PiD权重。发布完整标记前的目录不会被恢复。普通训练命令被kill后可手动重复命令续训。
+
+续训时若需要调整总步数、保存或验证周期，显式添加 `--allow-schedule-change`。权重、优化器、数据进度和已完成步数继续恢复；延长总步数时保留断点处的学习率，再按剩余更新进行cosine衰减，变更记录写入checkpoint。warmup配置保持一致。
+
+### 自动循环续训（单节点，可选）
+
+已有训练需要定期重新启动时，运行以下命令一次即可。脚本在后台运行，复用输出目录中已保存的配置和最新完整断点；每轮从启动开始计时，20分钟后请求保存，预留3分钟完成当前更新或验证图像，然后退出并自动启动新进程。训练与控制进程都会更新PID，不需要重复输入命令。`--stage a2` 完成A2训练和验证后停止；改为 `--stage all` 则依次完成尚未结束的阶段。
+
+```bash
+conda activate linear-pid
+
+GPU_IDS=0,1,2,3 CPU_THREADS=1 \
+bash scripts/train_pid_vdn_repeat.sh \
+  --stage a2 --cycle-seconds 1200 --grace-seconds 180 \
+  --workers 4 --output-root outputs/pid-vdn
+
+# 查看训练日志与循环状态
+tail -F outputs/pid-vdn/repeat/latest-training.log
+bash scripts/train_pid_vdn_repeat.sh --status --output-root outputs/pid-vdn
+
+# 保存后停止训练，同时停止自动重启
+bash scripts/train_pid_vdn_repeat.sh --stop --output-root outputs/pid-vdn
+```
+
+断点仍保存在原阶段的 `checkpoints/` 中，循环日志放在 `repeat/`，不创建新的实验目录。验证中断后保留已经完成的图像，下一轮继续剩余图像。遇到OOM或配置错误会停止；连续三轮没有训练或验证进展也会停止，原因记录在 `repeat/controller.log`。同一输出目录只允许一个自动控制器，清理仅针对它启动的训练进程及后代。
+
+这适用于按进程运行时长终止的限制；如果管理员按用户、会话或整个任务统一终止，更新PID不能保证持续运行，届时仍需重新执行启动命令。
 
 SwanLab默认离线，可用 `--swanlab-mode cloud` 开启云端记录。监控重点为 `train/kd_loss`、A1逐层 `alignment/` 的图像/文本误差、FM指标、样本覆盖、LR、梯度范数、耗时和显存。生成验证使用固定条件和seed，25步、CFG5、shift6。
 
