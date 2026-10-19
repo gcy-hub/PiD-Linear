@@ -66,6 +66,20 @@ CUDA_VISIBLE_DEVICES=1 python -m pid._src.vdn_pid.evaluation \
   --output-dir "$PID_QDM_RUN/inference"
 ```
 
+## Single-node Slurm training (4 GPUs)
+
+Submit from this branch checkout. A1 uses batch4, accumulation1 (effective16), while A2/B use batch8, accumulation2 (effective64). Stage budgets remain500/1000/10000 updates; each stage completes training and its validation before the next starts in a fresh process. The allocation lasts at most6days and has no node01 restart timer. An existing same-layout run resumes; changing GPU count records the effective-batch change without resetting the optimizer.
+
+```bash
+conda activate linear-pid
+export PID_QDM_REPO_ROOT="$PWD"
+export PID_QDM_RUN="$HOME/code/PiD-Linear/outputs/pid-qdm-halo2"
+mkdir -p "$PID_QDM_RUN/slurm"
+sbatch --chdir="$PWD" --output="$PID_QDM_RUN/slurm/%x-%j.out" scripts/train_qdm_halo_4gpu.slurm
+```
+
+Re-submit the same command to resume an interrupted allocation. Finished and validated stages are skipped; a failure or incomplete validation prevents advancing. Checkpoint and validation cadence is unchanged from the table above. A scheduler warning requests boundary saves30minutes before the6day limit. OOM exits without changing the requested batch. SwanLab remains offline. The submission does not start the node01 background controller.
+
 ## Original data/resource setup reference
 
 # PiD：固定空间四象限记忆
