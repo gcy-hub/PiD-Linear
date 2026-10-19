@@ -68,7 +68,7 @@ CUDA_VISIBLE_DEVICES=1 python -m pid._src.vdn_pid.evaluation \
 
 ## Single-node Slurm training (4 GPUs)
 
-Submit from this branch checkout. A1 uses batch4, accumulation1 (effective16), while A2/B use batch8, accumulation2 (effective64). Stage budgets remain500/1000/10000 updates; each stage completes training and its validation before the next starts in a fresh process. The allocation lasts at most6days and has no node01 restart timer. An existing same-layout run resumes; changing GPU count records the effective-batch change without resetting the optimizer.
+Submit from this branch checkout. A1 uses batch4, accumulation1 (effective16), while A2/B use batch4, accumulation2 (effective32). Stage budgets remain500/1000/10000 updates; each stage completes training and its validation before the next starts in a fresh process. The allocation lasts at most6days and has no node01 restart timer. An existing same-layout run resumes; changing GPU count records the effective-batch change without resetting the optimizer.
 
 ```bash
 conda activate linear-pid

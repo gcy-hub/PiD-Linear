@@ -16,7 +16,7 @@ common=(--preset 4gpu --memory-mode fixed4 --region-size "${PID_QDM_REGION_SIZE:
         --subset-root "${PID_VDN_SUBSET_ROOT:?}" --text-cache-root "${PID_TEXT_CACHE_ROOT:?}"
         --gallery-root "${PID_GALLERY_ROOT:?}")
 # Stage-specific batch settings. No node01 timer or restart controller is used here.
-for profile in a1:4:1:500:50:-1 a2:8:2:1000:100:-1 b:8:2:10000:2000:2000; do
+for profile in a1:4:1:500:50:-1 a2:4:2:1000:100:-1 b:4:2:10000:2000:2000; do
   IFS=: read -r stage batch accum steps save validate <<< "$profile"
   if [[ -e "$PID_QDM_RUN/$stage/STOP" ]]; then
     echo "Stop marker for $stage; later stages will not start."
