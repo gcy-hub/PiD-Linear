@@ -145,6 +145,9 @@ class JointVDN(nn.Module):
         self.bypass_softmax_gate = False
         self.alignment_callback = None
         self.scan_order = "row"
+        self.local_mode = "window"
+        self.local_halo = 0
+        self.window_offset = 0
 
     def set_context_parallel_group(self, group):
         if group is not None:
@@ -161,6 +164,9 @@ class JointVDN(nn.Module):
         return project(x, self.orig.qkv_x), project(y, self.orig.qkv_y)
 
     def local(self, x, y, qkv, tqkv, pos_img, pos_txt, grid, attn_mask=None):
+        if self.local_mode != "window":
+            from .local_windows import local_attention
+            return local_attention(self,x,y,qkv,tqkv,pos_img,pos_txt,grid,attn_mask)
         orig = self.orig
         b, n, c = x.shape
         heads, d = orig.num_heads, orig.head_dim
@@ -238,11 +244,14 @@ class JointVDN(nn.Module):
         )
 
 
-def convert_attention(net, region_size=8):
-    for block in net.patch_blocks:
+def convert_attention(net, region_size=8, local_mode="window", local_halo=0, local_shift=4, local_chunk=16):
+    for index,block in enumerate(net.patch_blocks):
         if isinstance(block.attn, JointVDN):
             raise ValueError("Already converted; reconstruct checkpoint architecture instead")
-        block.attn = JointVDN(block.attn, region_size)
+        block.attn = JointVDN(block.attn, region_size, region_chunk=local_chunk)
+        block.attn.local_mode=local_mode
+        block.attn.local_halo=local_halo if local_mode=="halo" else 0
+        block.attn.window_offset=local_shift if local_mode=="alternating_shift" and index%2 else 0
     return net
 
 

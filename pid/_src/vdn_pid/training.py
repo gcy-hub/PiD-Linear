@@ -29,7 +29,7 @@ from pid._src.networks.flow_matching import FlowMatchingTrainer
 
 from .attention import convert_attention, execution_mode
 from .checkpoint import latest_state, load_delta, load_parent_delta, load_state, save_state
-from .config import STAGES, VDNConfig, resume_metadata, verify_memory_mode
+from .config import local_layout, verify_local_layout, STAGES, VDNConfig, resume_metadata, verify_memory_mode
 from .lora import configure_stage, optimizer_groups
 
 
@@ -76,7 +76,8 @@ def build_student(config, stage, device, load_base=True):
     if load_base:
         load_original(net, config.teacher_path)
     net.requires_grad_(False).to(dtype=torch.bfloat16)
-    convert_attention(net, config.region_size)
+    convert_attention(net, config.region_size, local_mode=config.local_mode, local_halo=config.local_halo,
+                      local_shift=config.local_shift, local_chunk=config.local_chunk)
     if config.memory_mode == "fixed4":
         from .spatial_memory import replace_memory
 
@@ -178,6 +179,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "base_relative_path": str(Path(config.teacher_path).relative_to(config.weights_root)),
         "source_commit": "e262cb5770b3dc992d4f44f251cd17bbfe0c4d8b",
         "memory_mode": config.memory_mode,
+        "local_attention": local_layout(config),
         "subset_fingerprint": dataset.metadata["fingerprint"],
         "data_fingerprint": dataset.metadata.get("source_fingerprint", dataset.metadata["fingerprint"]),
         "text_cache_fingerprint": dataset.text_cache.fingerprint if dataset.text_cache else None,
@@ -187,6 +189,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
     }
     if payload:
         verify_memory_mode(config, payload["config"])
+        verify_local_layout(config,payload["config"])
         if payload["stage"] != stage:
             raise ValueError("Resume stage mismatch; use --init-from for stage transition")
         for key in ("region_size", "seed", "lora_rank", "lora_alpha"):
@@ -210,6 +213,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
     if parent and not payload:
         previous = load_state(parent)
         verify_memory_mode(config, previous["config"])
+        verify_local_layout(config,previous["config"])
         if previous["metadata"]["base_sha256"] != base_hash or previous["config"]["region_size"] != config.region_size:
             raise ValueError("Parent base/region configuration mismatch")
         if previous["config"]["seed"] != config.seed:
@@ -530,6 +534,7 @@ def parse_args(argv=None):
         "gallery_root",
         "output_root",
         "memory_mode",
+        "local_mode",
         "stage",
         "preset",
         "resume",
@@ -539,6 +544,9 @@ def parse_args(argv=None):
         parser.add_argument("--" + name.replace("_", "-"), default=getattr(defaults, name))
     for name in (
         "region_size",
+        "local_halo",
+        "local_shift",
+        "local_chunk",
         "seed",
         "workers",
         "threads",
@@ -568,6 +576,10 @@ def parse_args(argv=None):
         parser.error("stage must be a1,a2,b,all")
     if config.memory_mode not in ("vda", "fixed4"):
         parser.error("memory-mode must be vda or fixed4")
+    if config.local_mode not in ('window','halo'):
+        parser.error('This branch supports window or halo local attention')
+    if config.local_halo<0 or config.local_chunk<1 or (config.local_mode=='alternating_shift' and not 0<config.local_shift<config.region_size):
+        parser.error('Invalid local halo/shift/chunk')
     if config.region_size < 1 or config.workers < 0 or config.threads < 1 or config.log_steps < 1:
         parser.error("Invalid size/workers/threads/log interval")
     if config.max_steps < 0 or config.save_steps < 0 or config.validation_steps < -1 or config.lora_rank < 1:

@@ -78,6 +78,10 @@ class VDNConfig:
     gallery_root: str = field(default_factory=lambda: os.getenv("PID_GALLERY_ROOT", "outputs/linear-pid/assets"))
     output_root: str = "outputs/pid-vdn"
     region_size: int = 8
+    local_mode: str = "window"
+    local_halo: int = 0
+    local_shift: int = 4
+    local_chunk: int = 16
     memory_mode: str = "vda"
     stage: str = "all"
     preset: str = "4gpu"
@@ -134,3 +138,16 @@ def verify_memory_mode(config, saved_config):
     saved_mode = saved_config.get("memory_mode", "vda")
     if saved_mode != config.memory_mode:
         raise ValueError(f"Checkpoint memory_mode={saved_mode} differs from requested {config.memory_mode}")
+
+
+def local_layout(config):
+    def get(key,default):return config.get(key,default) if isinstance(config,dict) else getattr(config,key,default)
+    mode=get('local_mode','window')
+    return dict(schema=1,mode=mode,region_size=get('region_size',8),
+        halo=get('local_halo',0) if mode=='halo' else 0,
+        shift=get('local_shift',4) if mode=='alternating_shift' else 0)
+
+
+def verify_local_layout(config,saved_config):
+    if local_layout(config)!=local_layout(saved_config):
+        raise ValueError('Checkpoint local attention layout differs; use a new experiment directory')

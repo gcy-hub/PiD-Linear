@@ -15,7 +15,7 @@ from pid._src.linear_pid.training import init_distributed
 
 from .attention import JointVDN, execution_mode
 from .checkpoint import delta_state, load_delta, load_state, verify_base
-from .config import VDNConfig
+from .config import VDNConfig, local_layout
 from .training import build_student
 
 
@@ -115,6 +115,8 @@ def render_gallery(
         "diagnostics": diagnostics,
         "diagnostic_layers": diagnostic_layers,
     }
+    if local_layout(config)["mode"]!="window":
+        settings["local_attention"]=local_layout(config)
     if getattr(config, "memory_mode", "vda") != "vda":
         settings["memory_mode"] = config.memory_mode
     try:

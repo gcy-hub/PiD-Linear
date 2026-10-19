@@ -1,3 +1,73 @@
+# A: QDM + Halo Window
+
+This local research branch changes only QDM's image Local Softmax visibility. Four fixed-quadrant memory states, native image/text RoPE in the Softmax path, global text queries, shared pretrained projections, two PiT blocks and the original distillation objectives remain unchanged. Start A1 from the official undistilled PiD v1.5 FLUX weights; A2 loads this run's A1 and B loads this run's A2. Existing QDM fine-tuned weights are not used for this experiment.
+
+Each nonoverlapping 8x8 query group reads a 12x12 image K/V neighborhood at halo=2, plus text K/V in the **same Softmax**. Only the query center is written back, once per token. True image-edge padding is masked. `--local-halo 0` reproduces the original visibility; halo1/2/4 are configurable.
+
+New local layouts are saved in configuration/checkpoint metadata and gallery identity. Resume and stage transitions reject different layouts; legacy checkpoints without layout fields mean the original fixed window. Weights and tensor shapes are unchanged by the new masks. `--local-chunk` controls window batching (default16) without changing visibility.
+
+## Three-stage training
+
+Use the existing downloaded models, prepared20K/50K nested subsets, text cache and fixed validation assets. The base project preparation commands are retained below. Set locations for this server; do not copy training outputs into Git.
+
+```bash
+conda activate linear-pid
+export PID_WEIGHTS_ROOT="$HOME/huggingface_ckpts"
+export PID_INDEX_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_index"
+export PID_VDN_SUBSET_ROOT="$HOME/dataset/MultiAspect-4K-1M/pid_vdn_subsets"
+export PID_TEXT_CACHE_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_text_cache"
+export PID_GALLERY_ROOT="$HOME/code/PiD-Linear/outputs/linear-pid/assets"
+export PID_QDM_RUN="$HOME/code/PiD-Linear/outputs/pid-qdm-halo2"
+# Run from this branch checkout. Choose the GPUs currently available to you.
+GPU_IDS=1,2,3 CPU_THREADS=1 bash scripts/train_qdm_halo_repeat.sh \
+  --output-root "$PID_QDM_RUN" --weights-root "$PID_WEIGHTS_ROOT" \
+  --index-root "$PID_INDEX_ROOT" --subset-root "$PID_VDN_SUBSET_ROOT" \
+  --text-cache-root "$PID_TEXT_CACHE_ROOT" --gallery-root "$PID_GALLERY_ROOT"
+```
+
+The detached controller runs **A1→A2→B**, every GPU batch4, accumulation1, effective batch4×GPU count. `PID_QDM_BATCH` and `PID_QDM_ACCUM` can change the wrapper defaults. All new attention learning starts from official PiD, with frozen original weights. B adds zero-initialized rank64 Q/K/V/O LoRA; PiT remains frozen. No additional boundary loss or teacher model copy is introduced. Student/teacher share the existing training input and conditions; there is no CPU offload.
+
+|Stage|Updates|Data subset|Save|Validate|
+|---|---:|---:|---:|---|
+|A1|500|20K|50|At stage end|
+|A2|1000|20K|100|At stage end|
+|B|10000|50K|2000|Every2000 and stage end|
+
+The controller saves and exits near20minutes, then starts fresh training and controller processes from complete checkpoints. It preserves parameters, optimizer, scheduler, RNG, sampler position and SwanLab run information. Validation is also resumable. Stage completion requires the fixed gallery, so A2/B wait for preceding validation. Three stalled cycles or an unhandled failure stop retrying. No Slurm jobs are submitted.
+
+```bash
+conda activate linear-pid
+bash scripts/train_pid_vdn_repeat.sh --output-root "$PID_QDM_RUN" --status
+tail -f "$PID_QDM_RUN/repeat/latest-training.log"
+bash scripts/train_pid_vdn_repeat.sh --output-root "$PID_QDM_RUN" --stop
+```
+
+Repeat the original launch command to resume a deliberately stopped run. For foreground single-stage training use the existing entry, for example:
+
+```bash
+conda activate linear-pid
+GPU_IDS=1,2 CPU_THREADS=1 bash scripts/train_pid_vdn.sh \
+  --stage a1 --memory-mode fixed4 --local-mode halo --local-halo 2 \
+  --batch-size 4 --grad-accum 1 --effective-batch 8 --resume auto \
+  --output-root "$PID_QDM_RUN" --weights-root "$PID_WEIGHTS_ROOT" \
+  --index-root "$PID_INDEX_ROOT" --subset-root "$PID_VDN_SUBSET_ROOT" \
+  --text-cache-root "$PID_TEXT_CACHE_ROOT" --gallery-root "$PID_GALLERY_ROOT" \
+  --workers 4 --threads 1
+```
+
+Independent inference rebuilds the local layout from the checkpoint configuration, without a second resident teacher:
+
+```bash
+conda activate linear-pid
+CUDA_VISIBLE_DEVICES=1 python -m pid._src.vdn_pid.evaluation \
+  --checkpoint "$PID_QDM_RUN/a1/checkpoints/COMPLETE_CHECKPOINT_DIRECTORY" \
+  --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
+  --gallery-root "$PID_GALLERY_ROOT" --suite qualitative \
+  --output-dir "$PID_QDM_RUN/inference"
+```
+
+## Original data/resource setup reference
+
 # PiD：固定空间四象限记忆
 
 分支：`codex/spatially-disambiguated-delta-memory`。
