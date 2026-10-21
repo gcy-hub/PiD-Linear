@@ -109,3 +109,34 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --standalone --nproc_per_node=4 \
 这是用于判断无图像 latent 条件时 QDM 能否恢复生成质量的实验；代码通过性和训练 loss 不能代替阶段验证图的质量判断。
 
 当前代码的实际训练、推理及恢复检查见 [验证记录](pixeldit-qdm-verification.md)。
+
+## 5. 用原始 PixelDiT 合成图像进行 A1 对照
+
+此入口先用原始、未修改的 PixelDiT-T2I 生成正方形 1024×1024 图像，再从原始权重开始 QDM Halo2 的 A1。生成直接读取原有 Gemma caption 缓存和原生 CFG 负提示词缓存，采用 50 步、CFG 2.75、shift 4，不加载 Gemma、VAE 或已有学生权重。
+
+默认 A1 为 500 步、4卡、每卡 bs4、累积1，需要 8,000 次样本曝光。以 seed=42 对现有 20K 子集执行原采样器，共抽到 6,602 个不同样本 ID，因此每条记录生成一张图即可。入口保存原500步的样本顺序及重复关系；训练使用相同 caption 顺序和已有文本缓存，不重新随机抽一套数据。源验证样本不参与生成。
+
+在前面的资源变量设置完成后运行：
+
+```bash
+conda activate linear-pid
+export PIXELDIT_SYNTH_DATA="$PWD/dataset/MultiAspect-4K-1M/pixeldit_t2i_synthetic_a1"
+export PIXELDIT_SYNTH_RUN="$PWD/outputs/pixeldit-t2i-qdm-halo2-rope-synthetic-a1"
+
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_synthetic_a1.sh start \
+  --data-root "$PIXELDIT_SYNTH_DATA" --output-root "$PIXELDIT_SYNTH_RUN" \
+  --teacher-checkpoint "$PIXELDIT_BASE" --generation-batch-size 4 \
+  --cycle-seconds 1200 --workers 4 --threads 1 --swanlab-mode offline
+
+bash scripts/train_pixeldit_synthetic_a1.sh status --output-root "$PIXELDIT_SYNTH_RUN"
+tail -f "$PIXELDIT_SYNTH_RUN/repeat/latest-training.log"
+bash scripts/train_pixeldit_synthetic_a1.sh stop --output-root "$PIXELDIT_SYNTH_RUN"
+```
+
+首次命令启动后台控制器后返回终端。四卡按样本批次并行生成，每张图有独立固定噪声 seed；图片和完成标记原子保存，重启跳过已完成结果。`--generation-batch-size` 控制生成 batch，与 A1 的 batch 独立。图片全部校验完成后才发布训练索引，自动进入 A1；A1 完成及验证结束后停止，不进入 A2/B。控制器约每20分钟更新自身和子进程，生成与训练均可恢复；手动停止后不再重启。
+
+`--a1-steps`、`--a1-batch-size`、`--grad-accum` 和实际 GPU 数决定数据需求。修改预算会改变数据指纹，应使用新的数据目录。生成或训练 OOM 会保留原因并停止，不自动降低 batch 或分辨率。已有的真实图片、索引、caption 缓存和旧训练结果保持原样。
+
+数据目录内 `images/` 保存合成图像及逐图完成标记，`index/` 保存 manifest、原始样本映射和固定 batch plan。合成数据保留源样本 ID 与 caption，因此直接复用原有文本缓存。训练记录保存在独立的 `PIXELDIT_SYNTH_RUN/a1`，仍使用 SwanLab。若只想准备 caption 计划而不生成或训练，将 `start` 改成 `prepare`。
+
+该实验检验图像来源分布对迁移的影响；caption 仍来自原数据集，且本轮固定正方形，与此前多长宽比训练也有区别，因此结果不能单独证明全部问题都来自图像分布。

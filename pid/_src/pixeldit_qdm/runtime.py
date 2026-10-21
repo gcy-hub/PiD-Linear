@@ -91,12 +91,22 @@ class TextConditioning:
         return torch.where(drop[:,None,None],self.empty_embs,embs),torch.where(drop[:,None],self.empty_mask,mask)
 
 
+def pixel_noise(batch,height,width,device,seed):
+    if isinstance(seed,(list,tuple)):
+        if len(seed)!=batch:
+            raise ValueError('One noise seed is required per image')
+        return torch.cat([torch.randn(1,3,height,width,device=device,
+                          generator=torch.Generator(device=device).manual_seed(int(value))) for value in seed])
+    return torch.randn(batch,3,height,width,device=device,
+                       generator=torch.Generator(device=device).manual_seed(seed))
+
+
 @torch.no_grad()
 def sample(net,caption_embs,caption_mask,null_embs,null_mask,latent=None,*,height,width,seed=42,steps=50,cfg=2.75,shift=4.,**unused):
     from pid._src.modules.dpmsolver import DPMS
     if latent is not None:raise ValueError('PixelDiT-T2I inference must not receive an image latent')
     device=next(net.parameters()).device;b=caption_embs.shape[0]
-    noise=torch.randn(b,3,height,width,device=device,generator=torch.Generator(device=device).manual_seed(seed))
+    noise=pixel_noise(b,height,width,device,seed)
     null_embs,null_mask=null_embs.expand(b,-1,-1),null_mask.expand(b,-1)
     dtype=next(net.parameters()).dtype
     def predict(x,timestep,y,mask):

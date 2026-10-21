@@ -2,6 +2,8 @@
 
 本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。PixelDiT 入口默认恢复四象限远程分支图像 Q/K 的二维 RoPE，使用独立的 `outputs/pixeldit-t2i-qdm-halo2-rope` 目录从原始权重训练。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](docs/pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
 
+可选执行 [原始 PixelDiT 合成数据 A1 对照](docs/pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
+
 # A: QDM + Halo Window
 
 This local research branch changes only QDM's image Local Softmax visibility. Four fixed-quadrant memory states, native image/text RoPE in the Softmax path, global text queries, shared pretrained projections, two PiT blocks and the original distillation objectives remain unchanged. Start A1 from the official undistilled PiD v1.5 FLUX weights; A2 loads this run's A1 and B loads this run's A2. Existing QDM fine-tuned weights are not used for this experiment.

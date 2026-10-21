@@ -149,6 +149,7 @@ def training_command(root, stage, request):
             "index_root",
             "text_cache_root",
             "subset_root",
+            "train_index_root",
             "gallery_root",
             "region_size",
             "local_mode",
@@ -204,7 +205,8 @@ def progress_marker(stage_dir):
     checkpoint = Path(latest["checkpoint"]) if latest else None
     saved = read_json(checkpoint / "complete.json") if checkpoint else {}
     # Publishing another generation of the same step is not training progress.
-    return saved.get("step", -1), len(list((stage_dir / "galleries").glob("**/*.done.json")))
+    generated = read_json(stage_dir / 'synthetic-progress.json').get('completed', 0)
+    return saved.get("step", -1), len(list((stage_dir / "galleries").glob("**/*.done.json"))), generated
 
 
 def event(root, kind, **values):

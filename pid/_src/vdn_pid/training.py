@@ -175,8 +175,10 @@ def run_stage(config, stage, rank, world, device, parent=None):
     stage_dir = Path(config.output_root) / stage
     stage_dir.mkdir(parents=True, exist_ok=True)
     lock = lock_training_run(stage_dir, rank)
-    subset = Path(config.subset_root) / str(50000 if stage == "b" else 20000)
+    subset = Path(config.train_index_root) if config.train_index_root else Path(config.subset_root) / str(50000 if stage == "b" else 20000)
     dataset = RawImageDataset(subset, resolution=config.resolution, text_cache_root=config.text_cache_root or None)
+    if dataset.metadata.get('synthetic') and not dataset.metadata.get('synthetic_complete'):
+        raise ValueError('Synthetic image generation has not completed')
     checkpoint = latest_state(stage_dir) if config.resume == "auto" else None
     if config.resume not in ("auto", "none", ""):
         checkpoint = Path(config.resume)
@@ -298,7 +300,11 @@ def run_stage(config, stage, rank, world, device, parent=None):
     del payload
     gc.collect()
     seen = set(progress["seen_rows"])
-    sampler = GlobalBatchSampler(
+    sampler_class = GlobalBatchSampler
+    if dataset.metadata.get('global_batch_plan'):
+        from pid._src.pixeldit_qdm.synthetic_data import PlannedBatchSampler
+        sampler_class = PlannedBatchSampler
+    sampler = sampler_class(
         subset, settings["batch"], settings["accum"], rank, world, config.seed, progress["cursor"]
     )
     loader = DataLoader(
@@ -583,6 +589,7 @@ def parse_args(argv=None):
         "index_root",
         "text_cache_root",
         "subset_root",
+        "train_index_root",
         "gallery_root",
         "output_root",
         "memory_mode",
@@ -666,7 +673,7 @@ def main(argv=None):
     for path in (
         config.teacher_path,
         Path(config.index_root) / "index.json",
-        Path(config.subset_root) / "subsets.json",
+        Path(config.train_index_root) / 'index.json' if config.train_index_root else Path(config.subset_root) / "subsets.json",
     ):
         if not Path(path).exists():
             raise FileNotFoundError(path)
