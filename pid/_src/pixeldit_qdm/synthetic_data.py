@@ -24,6 +24,14 @@ def read_records(index):
 
 def _prepare_dataset(source_index, data_root, settings):
     source_index, root = Path(source_index).resolve(), Path(data_root).resolve()
+    settings=dict(settings)
+    marker=root/'generation.json'
+    if marker.exists():
+        # Legacy fingerprints include the original execution batch. Keep that
+        # provenance immutable; the current batch is a separate runtime setting.
+        original_settings=json.loads(marker.read_text())['settings']
+        if 'generation_batch_size' in original_settings:
+            settings['generation_batch_size']=original_settings['generation_batch_size']
     source = RawImageDataset(source_index)
     sampler = GlobalBatchSampler(source_index, settings['effective_batch'], 1, seed=settings['seed'])
     original = np.stack([sampler.global_batch(i) for i in range(settings['steps'])])

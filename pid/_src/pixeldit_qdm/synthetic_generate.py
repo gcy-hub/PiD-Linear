@@ -57,15 +57,20 @@ def generate(args):
         null_embs=special['null_embs'].to(device);null_mask=special['null_mask'].to(device)
         net=load_net(args.teacher_checkpoint).to(device=device,dtype=torch.bfloat16).eval().requires_grad_(False)
         # Deliberately no QDM conversion, no Gemma model, no VAE and no offload.
-        batch_size=settings['generation_batch_size']
+        batch_size=args.batch_size or settings['generation_batch_size']
+        if rank==0:print(f'Generation: {world} GPUs, batch {batch_size} per GPU',flush=True)
         tasks=[records[i:i+batch_size] for i in range(0,len(records),batch_size)]
         emitted=0
+        last_batch_seconds=0
         claims=root/'batch-locks';claims.mkdir(exist_ok=True)
         with ThreadPoolExecutor(max_workers=args.workers) as pool, torch.no_grad():
             # All GPUs consume one queue. A faster GPU can claim additional batches;
             # flock releases automatically on exit/kill, so no stale claims survive.
             for number,group in tqdm(enumerate(tasks),total=len(tasks),desc=f'Original PixelDiT rank{rank}',unit='batch'):
                 if (stage/'STOP').exists() or (args.max_seconds and time.monotonic()-started>=args.max_seconds):break
+                if args.max_seconds and last_batch_seconds and (
+                    time.monotonic()-started+last_batch_seconds*1.15+10>=args.max_seconds
+                ):break
                 missing=[not generated_complete(root,r,meta['fingerprint']) for r in group]
                 if not any(missing):continue
                 with (claims/f'{number:06d}.lock').open('a') as claim:
@@ -73,6 +78,7 @@ def generate(args):
                     except BlockingIOError:continue
                     missing=[not generated_complete(root,r,meta['fingerprint']) for r in group]
                     if not any(missing):continue
+                    group=[record for record,needed in zip(group,missing) if needed]
                     embeddings,masks=zip(*(cache.read(r['id'],r['caption']) for r in group))
                     torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats(device);tick=time.perf_counter()
                     images=sample(net,torch.stack(embeddings).to(device),torch.stack(masks).to(device),
@@ -82,16 +88,16 @@ def generate(args):
                     torch.cuda.synchronize();seconds=time.perf_counter()-tick
                     if not torch.isfinite(images).all():raise FloatingPointError('Nonfinite synthetic pixels')
                     with (stage/f'synthetic-batches-rank-{rank}.jsonl').open('a') as stream:
-                        stream.write(json.dumps(dict(batch=number,images=sum(missing),seconds=seconds,
+                        stream.write(json.dumps(dict(batch=number,images=len(group),batch_size=batch_size,seconds=seconds,
                                      peak_memory_gib=torch.cuda.max_memory_allocated(device)/2**30))+'\n')
                     futures=[]
-                    for i,(record,needed) in enumerate(zip(group,missing)):
-                        if needed:
-                            image=tensor_image(images[i:i+1])
-                            futures.append(pool.submit(save_generated,root,record,image,meta['fingerprint']))
-                            emitted+=1
+                    for i,record in enumerate(group):
+                        image=tensor_image(images[i:i+1])
+                        futures.append(pool.submit(save_generated,root,record,image,meta['fingerprint']))
+                        emitted+=1
                     for future in futures:future.result()
                     del images,embeddings,masks
+                    last_batch_seconds=time.perf_counter()-tick
                 if rank==0:
                     completed=len(list((root/'images').glob('*.done.json')))
                     atomic_json(stage/'synthetic-progress.json',dict(completed=completed,total=meta['train_size'],
@@ -116,8 +122,9 @@ def main(argv=None):
     p.add_argument('--teacher-checkpoint',required=True);p.add_argument('--text-cache-root',required=True)
     p.add_argument('--workers',type=int,default=4);p.add_argument('--threads',type=int,default=1)
     p.add_argument('--max-seconds',type=int,default=1200);p.add_argument('--limit',type=int,default=0)
+    p.add_argument('--batch-size',type=int,default=0,help='Execution batch; zero uses the original preparation default')
     args=p.parse_args(argv)
-    if min(args.workers,args.threads)<1 or min(args.max_seconds,args.limit)<0:p.error('Invalid worker/time/limit')
+    if min(args.workers,args.threads)<1 or min(args.max_seconds,args.limit,args.batch_size)<0:p.error('Invalid worker/time/limit/batch')
     generate(args)
 
 

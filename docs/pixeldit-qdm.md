@@ -135,6 +135,8 @@ bash scripts/train_pixeldit_synthetic_a1.sh stop --output-root "$PIXELDIT_SYNTH_
 
 首次命令启动后台控制器后返回终端。四卡按样本批次并行生成，每张图有独立固定噪声 seed；图片和完成标记原子保存，重启跳过已完成结果。`--generation-batch-size` 控制生成 batch，与 A1 的 batch 独立。图片全部校验完成后才发布训练索引，自动进入 A1；A1 完成及验证结束后停止，不进入 A2/B。控制器约每20分钟更新自身和子进程，生成与训练均可恢复；手动停止后不再重启。
 
+可以先 `stop`，再用同一命令和同一目录将 `--generation-batch-size` 改为20后 `start`；已完成图片及 A1 抽样计划保持不变。当前实际生成 batch 记录在输出目录的 `generation-runtime.json`，数据目录 `generation.json` 保留首次准备时的配置。生成进程会参考最近一个 batch 的耗时，尽量在本轮时间不足时提前保存退出。被强制中断的未完成图片会在下一轮重新生成。
+
 `--a1-steps`、`--a1-batch-size`、`--grad-accum` 和实际 GPU 数决定数据需求。修改预算会改变数据指纹，应使用新的数据目录。生成或训练 OOM 会保留原因并停止，不自动降低 batch 或分辨率。已有的真实图片、索引、caption 缓存和旧训练结果保持原样。
 
 数据目录内 `images/` 保存合成图像及逐图完成标记，`index/` 保存 manifest、原始样本映射和固定 batch plan。合成数据保留源样本 ID 与 caption，因此直接复用原有文本缓存。训练记录保存在独立的 `PIXELDIT_SYNTH_RUN/a1`，仍使用 SwanLab。若只想准备 caption 计划而不生成或训练，将 `start` 改成 `prepare`。

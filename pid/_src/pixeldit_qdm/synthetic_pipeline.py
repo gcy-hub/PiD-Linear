@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from pid._src.linear_pid.data import sha256_file
+from pid._src.linear_pid.data import atomic_json, sha256_file
 from pid._src.linear_pid.text_cache import TextCacheReader
 from pid._src.vdn_pid.training import parse_args
 from scripts.repeat_pid_vdn import launch, read_json
@@ -24,12 +24,14 @@ def cycle(argv):
         raise ValueError('Synthetic pipeline runs native PixelDiT A1 only')
     ready=index/'index.json'
     if not ready.exists():
+        runtime=read_json(run/'generation-runtime.json')
         visible=os.getenv('GPU_IDS',os.getenv('CUDA_VISIBLE_DEVICES','0,1,2,3')).split(',')
         command=[sys.executable,'-m','torch.distributed.run','--standalone',
                  '--nproc_per_node',str(len(visible)),'-m','pid._src.pixeldit_qdm.synthetic_generate',
                  '--index-root',str(index),'--run-root',str(run),'--teacher-checkpoint',config.teacher_path,
                  '--text-cache-root',config.text_cache_root,'--threads',str(config.threads),
-                 '--workers',str(max(1,config.workers)),'--max-seconds',str(config.max_seconds)]
+                 '--workers',str(max(1,config.workers)),'--max-seconds',str(config.max_seconds),
+                 '--batch-size',str(runtime.get('batch_size',0))]
         print('PHASE original-model synthetic generation',flush=True)
         result=subprocess.call(command,cwd=REPO)
         if result:return result
@@ -58,6 +60,7 @@ def main(argv=None):
     root=Path(config.output_root).resolve()
     if args.action=='status':
         print(json.dumps(dict(controller=read_json(root/'repeat/state.json'),
+                              generation_runtime=read_json(root/'generation-runtime.json'),
                               generation=read_json(root/'a1/synthetic-progress.json')),indent=2));return
     if args.action=='stop':
         (root/'repeat').mkdir(parents=True,exist_ok=True);(root/'repeat/STOP').touch()
@@ -78,6 +81,14 @@ def main(argv=None):
     print(json.dumps(dict(exposures=meta['exposures'],images=meta['train_size'],
                           index=config.train_index_root,stage=stage)),flush=True)
     if args.action=='prepare':return
+    root.mkdir(parents=True,exist_ok=True)
+    runtime=read_json(root/'generation-runtime.json')
+    history=runtime.get('history',[])
+    if runtime.get('batch_size')!=args.generation_batch_size:
+        history.append(dict(time=time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+                            previous_batch_size=runtime.get('batch_size',meta['settings']['generation_batch_size']),
+                            batch_size=args.generation_batch_size))
+    atomic_json(root/'generation-runtime.json',dict(batch_size=args.generation_batch_size,history=history))
     training_args=[]
     for key,value in config.to_dict().items():
         if key in ('stage','output_root','max_seconds'):continue
