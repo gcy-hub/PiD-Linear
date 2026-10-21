@@ -1476,7 +1476,7 @@ class PixDiT_T2I(nn.Module):
         nn.init.zeros_(self.final_layer.linear.weight)
         nn.init.zeros_(self.final_layer.linear.bias)
 
-    def forward(self, x, t, y, s=None, mask=None):
+    def forward(self, x, t, y, s=None, mask=None, *, text_valid_mask=None):
         B, _, H, W = x.shape
         # Derive grid token count deterministically from spatial size
         Hs = H // self.patch_size
@@ -1554,8 +1554,14 @@ class PixDiT_T2I(nn.Module):
                     attn_mask_joint = torch.cat([pad_txt, pad_img], dim=1).view(B, 1, 1, Ltxt + L_img_curr)
 
                 for i in range(self.patch_depth):
-                    s_main, y_emb = self.patch_blocks[i](s_main, y_emb, condition, pos_b, pos_txt, attn_mask_joint)
-                    if 0 < self.repa_encoder_index == (i + 1):
+                    block_args = (s_main, y_emb, condition, pos_b, pos_txt, attn_mask_joint)
+                    if getattr(self, "activation_checkpointing", False) and self.training and torch.is_grad_enabled():
+                        from torch.utils.checkpoint import checkpoint
+                        s_main, y_emb = checkpoint(self.patch_blocks[i], *block_args,
+                            grid_size=(Hb, Wb), text_valid_mask=text_valid_mask, use_reentrant=False)
+                    else:
+                        s_main, y_emb = self.patch_blocks[i](*block_args, grid_size=(Hb, Wb), text_valid_mask=text_valid_mask)
+                    if getattr(self, "cache_repa_features", True) and 0 < self.repa_encoder_index == (i + 1):
                         self.last_repa_tokens = s_main
                 s_bottleneck2 = s_main if self.s_ed_proj_in is None else self.s_ed_proj_in(s_main)
                 if self.s_ed_in_norm is not None:
@@ -1581,12 +1587,18 @@ class PixDiT_T2I(nn.Module):
                     attn_mask_joint = torch.cat([pad_txt, pad_img], dim=1).view(B, 1, 1, Ltxt + L)
 
                 for i in range(self.patch_depth):
-                    s_main, y_emb = self.patch_blocks[i](s_main, y_emb, condition, pos, pos_txt, attn_mask_joint)
-                    if 0 < self.repa_encoder_index == (i + 1):
+                    block_args = (s_main, y_emb, condition, pos, pos_txt, attn_mask_joint)
+                    if getattr(self, "activation_checkpointing", False) and self.training and torch.is_grad_enabled():
+                        from torch.utils.checkpoint import checkpoint
+                        s_main, y_emb = checkpoint(self.patch_blocks[i], *block_args,
+                            grid_size=(Hs, Ws), text_valid_mask=text_valid_mask, use_reentrant=False)
+                    else:
+                        s_main, y_emb = self.patch_blocks[i](*block_args, grid_size=(Hs, Ws), text_valid_mask=text_valid_mask)
+                    if getattr(self, "cache_repa_features", True) and 0 < self.repa_encoder_index == (i + 1):
                         self.last_repa_tokens = s_main
                 s = torch.nn.functional.silu(t_emb + s_main)
         # If no valid tap index is specified, expose last conditional output
-        if not (0 < self.repa_encoder_index <= self.patch_depth):
+        if getattr(self, "cache_repa_features", True) and not (0 < self.repa_encoder_index <= self.patch_depth):
             self.last_repa_tokens = s
 
         # Ensure the patch token length matches the rank-local grid (L_local
@@ -1611,7 +1623,15 @@ class PixDiT_T2I(nn.Module):
             x_pixels = split_inputs_cp(x_pixels, seq_dim=1, cp_group=cp_group)
             x_pixels = x_pixels.reshape(B * L_local, P2, self.pixel_hidden_size)
         for blk in self.pixel_blocks:
-            x_pixels = blk(x_pixels, s_cond, H, W, self.patch_size, mask)
+            pit_chunk_size = getattr(self, "pit_chunk_size", 0)
+            if pit_chunk_size and self.training and torch.is_grad_enabled():
+                x_pixels = blk.forward_chunked(x_pixels, s_cond, H, W, self.patch_size, mask,
+                    chunk_size=pit_chunk_size, checkpointing=getattr(self, "activation_checkpointing", False))
+            elif getattr(self, "activation_checkpointing", False) and self.training and torch.is_grad_enabled():
+                from torch.utils.checkpoint import checkpoint
+                x_pixels = checkpoint(blk, x_pixels, s_cond, H, W, self.patch_size, mask, use_reentrant=False)
+            else:
+                x_pixels = blk(x_pixels, s_cond, H, W, self.patch_size, mask)
 
         # Project back to image and fold
         x_pixels = self.final_layer(x_pixels)  # [B*L_local, P2, C]

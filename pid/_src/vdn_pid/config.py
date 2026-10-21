@@ -77,6 +77,17 @@ class VDNConfig:
     )
     gallery_root: str = field(default_factory=lambda: os.getenv("PID_GALLERY_ROOT", "outputs/linear-pid/assets"))
     output_root: str = "outputs/pid-vdn"
+    backbone: str = "pid"
+    teacher_checkpoint: str = ""
+    a1_batch_size: int = 4
+    a2_batch_size: int = 8
+    b_batch_size: int = 8
+    a1_steps: int = 500
+    a2_steps: int = 1000
+    b_steps: int = 10000
+    resolution: str = "2048"
+    flow_shift: float = 6.0
+    shift_base_size: int = 2048
     region_size: int = 8
     local_mode: str = "window"
     local_halo: int = 0
@@ -112,10 +123,19 @@ class VDNConfig:
 
     @property
     def teacher_path(self):
+        if self.teacher_checkpoint:
+            return str(Path(self.teacher_checkpoint).expanduser().resolve())
+        if self.backbone == "pixeldit_t2i":
+            from pid._src.pixeldit_qdm.runtime import checkpoint_path
+            return str(checkpoint_path(Path(self.weights_root)/"PixelDiT-T2I"))
         return str(Path(self.weights_root) / BASE_RELATIVE)
 
     def stage_settings(self, stage, world):
         p = STAGES[stage].copy()
+        if self.backbone == "pixeldit_t2i":
+            p["steps"] = getattr(self, stage+"_steps")
+            p["batch"] = self.batch_size or getattr(self, stage+"_batch_size")
+            p["effective"] = self.effective_batch or world*p["batch"]*(self.grad_accum or 1)
         p["steps"] = self.max_steps or p["steps"]
         p["batch"] = self.batch_size or p["batch"]
         p["effective"] = self.effective_batch or p["effective"]

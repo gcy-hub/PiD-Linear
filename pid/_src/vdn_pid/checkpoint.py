@@ -55,7 +55,7 @@ def load_state(path):
             raise ValueError(f"Incomplete checkpoint: {path}")
         path = path / "state.pt"
     value = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
-    if value.get("architecture") != "pid_vdn" or value.get("schema") != 2:
+    if value.get("architecture") not in ("pid_vdn", "pixeldit_qdm") or value.get("schema") != 2:
         raise ValueError("Not a PiD-VDN checkpoint")
     return value
 
@@ -86,7 +86,7 @@ def save_state(root, net, optimizer, scheduler, config, stage, progress, metadat
             tmp.mkdir(exist_ok=True)
             payload = dict(
                 schema=2,
-                architecture="pid_vdn",
+                architecture="pixeldit_qdm" if config.backbone=="pixeldit_t2i" else "pid_vdn",
                 delta=cpu_tree(delta_state(net)),
                 optimizer=cpu_tree(optimizer.state_dict()),
                 scheduler=scheduler.state_dict(),

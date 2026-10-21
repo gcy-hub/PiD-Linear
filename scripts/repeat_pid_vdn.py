@@ -143,6 +143,9 @@ def training_command(root, stage, request):
         inherited = read_json(root / previous / "config.json") if previous else {}
         common = (
             "weights_root",
+            "backbone", "teacher_checkpoint",
+            "a1_batch_size", "a2_batch_size", "b_batch_size", "a1_steps", "a2_steps", "b_steps",
+            "resolution", "flow_shift", "shift_base_size",
             "index_root",
             "text_cache_root",
             "subset_root",

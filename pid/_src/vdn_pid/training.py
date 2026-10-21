@@ -72,9 +72,13 @@ class AlignCallback:
 
 
 def build_student(config, stage, device, load_base=True):
-    net = build_net()
-    if load_base:
-        load_original(net, config.teacher_path)
+    if config.backbone == "pixeldit_t2i":
+        from pid._src.pixeldit_qdm.runtime import build_net as make_net, load_net
+        net = load_net(config.teacher_path) if load_base else make_net()
+    else:
+        net = build_net()
+        if load_base:
+            load_original(net, config.teacher_path)
     net.requires_grad_(False).to(dtype=torch.bfloat16)
     convert_attention(net, config.region_size, local_mode=config.local_mode, local_halo=config.local_halo,
                       local_shift=config.local_shift, local_chunk=config.local_chunk)
@@ -118,10 +122,12 @@ def sample_seed(seed, stage, cursor, row):
     return int.from_bytes(hashlib.sha256(value).digest()[:8], "little") % (2**63 - 1)
 
 
-def training_inputs(batch, conditioning, fm, noiser, device, seed=42, stage="a1", cursor=0):
+def training_inputs(batch, conditioning, fm, noiser, device, seed=42, stage="a1", cursor=0,
+                    flow_shift=6.0, shift_base_size=2048):
     x0 = batch["image"].to(device, non_blocking=True).float().div_(127.5).sub_(1.0)
     with torch.no_grad():
-        latent, _ = conditioning.encode_image(x0)  # FLUX encoder uses posterior mean, deterministic.
+        image_conditioned = getattr(conditioning, "image_conditioned", True)
+        latent = conditioning.encode_image(x0)[0] if image_conditioned else None
         captions = []
         latent_parts = []
         sigmas = []
@@ -129,28 +135,36 @@ def training_inputs(batch, conditioning, fm, noiser, device, seed=42, stage="a1"
         noisy_parts = []
         targets = []
         h, w = x0.shape[-2:]
-        shift = 6 * ((h * w) ** 0.5 / 2048) ** 0.5
+        shift = flow_shift * ((h * w) ** 0.5 / shift_base_size) ** 0.5
         for i, row in enumerate(batch["row"]):
             # Key randomness by global row/update, independent of rank, microbatch and world size.
             with torch.random.fork_rng(devices=[device.index]):
                 torch.cuda.manual_seed(sample_seed(seed, stage, cursor, row))
-                li, sigma = noiser(latent[i : i + 1])
+                if image_conditioned:
+                    li, sigma = noiser(latent[i : i + 1])
                 captions.append("" if torch.rand((), device=device).item() < 0.1 else batch["caption"][i])
-                li = li * (torch.rand((), device=device) >= 0.1)
+                if image_conditioned:
+                    li = li * (torch.rand((), device=device) >= 0.1)
                 t = fm.sample_t(1, device=device)
                 t = shift * t / (1 + (shift - 1) * t)
                 noisy, noise, _ = fm.add_noise(x0[i : i + 1], t)
-                latent_parts.append(li)
-                sigmas.append(sigma)
+                if image_conditioned:
+                    latent_parts.append(li)
+                    sigmas.append(sigma)
                 times.append(t)
                 noisy_parts.append(noisy)
                 targets.append(noise - x0[i : i + 1])
         emb, mask = conditioning.encode_text(
             captions, cached_embs=batch.get("text_embs"), cached_mask=batch.get("text_mask")
         )
+    noisy_pixels, timesteps = torch.cat(noisy_parts), torch.cat(times) * 1000.0
+    if not image_conditioned:
+        # Match the official PixDiTTrainer wrapper, including its input casts.
+        noisy_pixels, timesteps, emb = [value.to(torch.bfloat16) for value in (noisy_pixels, timesteps, emb)]
     return (
-        (torch.cat(noisy_parts), torch.cat(times) * 1000.0, emb),
-        dict(lq_latent=torch.cat(latent_parts), degrade_sigma=torch.cat(sigmas), text_valid_mask=mask),
+        (noisy_pixels, timesteps, emb),
+        ({"lq_latent":torch.cat(latent_parts), "degrade_sigma":torch.cat(sigmas), "text_valid_mask":mask}
+         if image_conditioned else {"text_valid_mask":mask}),
         torch.cat(targets),
     )
 
@@ -161,7 +175,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
     stage_dir.mkdir(parents=True, exist_ok=True)
     lock = lock_training_run(stage_dir, rank)
     subset = Path(config.subset_root) / str(50000 if stage == "b" else 20000)
-    dataset = RawImageDataset(subset, text_cache_root=config.text_cache_root or None)
+    dataset = RawImageDataset(subset, resolution=config.resolution, text_cache_root=config.text_cache_root or None)
     checkpoint = latest_state(stage_dir) if config.resume == "auto" else None
     if config.resume not in ("auto", "none", ""):
         checkpoint = Path(config.resume)
@@ -174,11 +188,18 @@ def run_stage(config, stage, rank, world, device, parent=None):
     np.random.seed(seed)
     torch.manual_seed(seed)
     base_hash = broadcast_object(sha256_file(config.teacher_path) if rank == 0 else None, rank)
+    if config.backbone == "pixeldit_t2i":
+        from pid._src.pixeldit_qdm.runtime import PIXELDIT_KWARGS
+        backbone_settings = PIXELDIT_KWARGS.copy()
+    else:
+        backbone_settings = None
     metadata = {
         "base_sha256": base_hash,
-        "base_relative_path": str(Path(config.teacher_path).relative_to(config.weights_root)),
+        "base_relative_path": os.path.relpath(Path(config.teacher_path).resolve(), Path(config.weights_root).resolve()),
         "source_commit": "e262cb5770b3dc992d4f44f251cd17bbfe0c4d8b",
         "memory_mode": config.memory_mode,
+        "backbone": config.backbone,
+        "backbone_settings": backbone_settings,
         "local_attention": local_layout(config),
         "subset_fingerprint": dataset.metadata["fingerprint"],
         "data_fingerprint": dataset.metadata.get("source_fingerprint", dataset.metadata["fingerprint"]),
@@ -188,6 +209,13 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "swanlab_run_id": broadcast_object(uuid.uuid4().hex if rank == 0 else None, rank),
     }
     if payload:
+        if payload["config"].get("backbone", "pid") != config.backbone:
+            raise ValueError("Resume backbone mismatch")
+        if payload["metadata"].get("backbone_settings") != backbone_settings:
+            raise ValueError("Resume backbone settings mismatch")
+        for key, legacy in (("resolution", "2048"), ("flow_shift", 6.0), ("shift_base_size", 2048)):
+            if payload["config"].get(key, legacy) != getattr(config, key):
+                raise ValueError(f"Resume {key} mismatch")
         verify_memory_mode(config, payload["config"])
         verify_local_layout(config,payload["config"])
         if payload["stage"] != stage:
@@ -207,11 +235,19 @@ def run_stage(config, stage, rank, world, device, parent=None):
             payload["scheduler"],
         )
     net = build_student(config, stage, device)
+    net.base_sha256 = base_hash
     progress = dict(
         stage_step=0, total_step=0, cursor=0, samples_seen=0, seen_rows=[], skipped_batches=0, validation_pending=False
     )
     if parent and not payload:
         previous = load_state(parent)
+        if previous["config"].get("backbone", "pid") != config.backbone:
+            raise ValueError("Parent backbone mismatch")
+        if previous["metadata"].get("backbone_settings") != backbone_settings:
+            raise ValueError("Parent backbone settings mismatch")
+        for key, legacy in (("resolution", "2048"), ("flow_shift", 6.0), ("shift_base_size", 2048)):
+            if previous["config"].get(key, legacy) != getattr(config, key):
+                raise ValueError(f"Parent {key} mismatch")
         verify_memory_mode(config, previous["config"])
         verify_local_layout(config,previous["config"])
         if previous["metadata"]["base_sha256"] != base_hash or previous["config"]["region_size"] != config.region_size:
@@ -248,7 +284,12 @@ def run_stage(config, stage, rank, world, device, parent=None):
     if payload:
         optimizer.load_state_dict(payload["optimizer"])
         scheduler.load_state_dict(payload["scheduler"])
-    conditioning = Conditioning(config.weights_root, device, text_cache_root=config.text_cache_root or None)
+    if config.backbone == "pixeldit_t2i":
+        from pid._src.pixeldit_qdm.runtime import TextConditioning
+        conditioning = TextConditioning(config.weights_root, device, text_cache_root=config.text_cache_root or None)
+        net.pixeldit_null_conditions = (conditioning.null_embs, conditioning.null_mask)
+    else:
+        conditioning = Conditioning(config.weights_root, device, text_cache_root=config.text_cache_root or None)
     if payload:
         restore_rng(payload["rng"][rank % payload["world_size"]])
         # Future conditioning/noise draws use sample_seed, including when ranks change.
@@ -275,7 +316,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
 
         tracker = swanlab
         swanlab.init(
-            project="PiD-VDN",
+            project="PixelDiT-QDM-Halo2" if config.backbone == "pixeldit_t2i" else "PiD-VDN",
             experiment_name=stage if config.memory_mode == "vda" else f"{stage}-{config.memory_mode}",
             config={**config.to_dict(), **settings},
             mode="online" if config.swanlab_mode == "cloud" else config.swanlab_mode,
@@ -337,7 +378,10 @@ def run_stage(config, stage, rank, world, device, parent=None):
         if config.validation_steps == 0:
             progress["validation_pending"] = False
             return
-        from .evaluation import render_gallery
+        if config.backbone == "pixeldit_t2i":
+            from pid._src.pixeldit_qdm.evaluation import render_gallery
+        else:
+            from .evaluation import render_gallery
 
         completion = {}
         with torch.random.fork_rng(devices=[device.index]):
@@ -380,7 +424,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
                     skipped = True
                     continue
                 args, kwargs, fm_target = training_inputs(
-                    batch, conditioning, fm, noiser, device, config.seed, stage, progress["cursor"]
+                    batch, conditioning, fm, noiser, device, config.seed, stage, progress["cursor"],
+                    config.flow_shift, config.shift_base_size,
                 )
                 events = [torch.cuda.Event(enable_timing=True) for _ in range(4)]
                 events[0].record()
@@ -528,6 +573,9 @@ def parse_args(argv=None):
     defaults = VDNConfig()
     for name in (
         "weights_root",
+        "backbone",
+        "teacher_checkpoint",
+        "resolution",
         "index_root",
         "text_cache_root",
         "subset_root",
@@ -544,6 +592,9 @@ def parse_args(argv=None):
         parser.add_argument("--" + name.replace("_", "-"), default=getattr(defaults, name))
     for name in (
         "region_size",
+        "a1_batch_size", "a2_batch_size", "b_batch_size",
+        "a1_steps", "a2_steps", "b_steps",
+        "shift_base_size",
         "local_halo",
         "local_shift",
         "local_chunk",
@@ -564,6 +615,7 @@ def parse_args(argv=None):
         "pit_chunk_size",
     ):
         parser.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
+    parser.add_argument("--flow-shift", type=float, default=defaults.flow_shift)
     parser.add_argument("--no-activation-checkpointing", action="store_true")
     parser.add_argument("--allow-batch-change", action="store_true")
     parser.add_argument("--allow-schedule-change", action="store_true")
@@ -572,6 +624,12 @@ def parse_args(argv=None):
     dry = args.pop("dry_run")
     args["activation_checkpointing"] = not args.pop("no_activation_checkpointing")
     config = VDNConfig(**args)
+    if config.backbone not in ("pid", "pixeldit_t2i"):
+        parser.error("backbone must be pid or pixeldit_t2i")
+    if config.resolution not in ("1024", "2048") or config.flow_shift <= 0 or config.shift_base_size < 1:
+        parser.error("Training resolution must be 1024 or 2048, and shift settings must be positive")
+    if min(config.a1_batch_size,config.a2_batch_size,config.b_batch_size,config.a1_steps,config.a2_steps,config.b_steps)<1:
+        parser.error("Stage batches/steps must be positive")
     if config.stage not in ("all", *STAGES):
         parser.error("stage must be a1,a2,b,all")
     if config.memory_mode not in ("vda", "fixed4"):
