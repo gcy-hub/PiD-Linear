@@ -2,7 +2,9 @@
 
 这个实验直接使用官方 1024px PixelDiT-T2I 权重，将全部 14 层 MMDiT Attention 替换为 QDM Halo2，两层 PiT 保持冻结。模型只接收 noisy pixels、时间步和 Gemma 文本，不使用 PiD 的低分辨率图像 latent 条件，不加载 FLUX VAE 或 Z-Image。默认训练和阶段验证使用原生 1K 多长宽比设置。
 
-局部分支以 `8×8 token` 为 query 区域，halo=2 时读取周围 `12×12` 图像 K/V 和全部文本，保留原有 RoPE。远程分支复用现有四象限 QDM，不使用 RoPE。A1/A2 冻结原始投影，仅训练新增记忆分支；B 继续训练记忆分支、Softmax Gate 和 rank=64、alpha=64 的 Q/K/V/O LoRA。FFN、AdaLN、PiT 和原始权重始终冻结，EMA 关闭，无 CPU offload。
+局部分支以 `8×8 token` 为 query 区域，halo=2 时读取周围 `12×12` 图像 K/V 和全部文本，保留原有 RoPE。远程分支使用四象限 QDM，默认开启 `--remote-rope`：图像 K/V 完成全网格 DWConv、SiLU，Q/K 完成 L2 normalization 后，使用原始主干的全图二维坐标旋转 Q/K，再分配到四个记忆。V 不旋转，象限内不重置坐标。远程分支仍不写入文本；文本继续通过局部分支交互，PiT 的 RoPE 保持原样。
+
+A1/A2 冻结原始投影，仅训练新增记忆分支；B 继续训练记忆分支、Softmax Gate 和 rank=64、alpha=64 的 Q/K/V/O LoRA。FFN、AdaLN、PiT 和原始权重始终冻结，EMA 关闭，无 CPU offload。恢复远程 RoPE 是定位空间重复、错位问题的对照实验，是否改善质量需要观察验证结果。
 
 ## 1. 准备资源
 
@@ -20,7 +22,7 @@ export PID_INDEX_ROOT="$PWD/dataset/MultiAspect-4K-1M/linear_pid_index"
 export PID_VDN_SUBSET_ROOT="$PWD/dataset/MultiAspect-4K-1M/pid_vdn_subsets"
 export PID_TEXT_CACHE_ROOT="$PWD/dataset/MultiAspect-4K-1M/linear_pid_text_cache"
 export PID_GALLERY_ROOT="$PWD/runtime/pid-vdn-validation/gallery"
-export PIXELDIT_RUN="$PWD/outputs/pixeldit-t2i-qdm-halo2"
+export PIXELDIT_RUN="$PWD/outputs/pixeldit-t2i-qdm-halo2-rope"
 
 # 一次性补充两条原生 CFG 条件，结果写入现有文本缓存目录。
 CUDA_VISIBLE_DEVICES=0 python -m pid._src.pixeldit_qdm.conditioning \
@@ -53,6 +55,8 @@ GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_qdm.sh \
 只运行某阶段时将 `--stage all` 改为 `--stage a1`、`--stage a2` 或 `--stage b`。同一输出目录内自动查找上一阶段；也可用 `--init-from` 指定父 checkpoint。`--a1-batch-size`、`--a2-batch-size`、`--b-batch-size` 分别设置 batch；`--grad-accum` 控制累积。`--batch-size` 会覆盖三个阶段的 batch。
 
 同阶段重复原命令即可恢复参数、优化器、scheduler、随机状态、数据进度及 SwanLab run。保存周期按 optimizer step 计算；停止信号在更新边界触发保存，不完整 checkpoint 不会用于恢复。
+
+远程 RoPE 设置写入配置和 checkpoint，恢复及阶段切换均检查一致性。旧 checkpoint 缺少此字段时按 NoPE 处理，独立推理自动遵循 checkpoint。重新训练默认从原始 PixelDiT 开始，使用上述独立输出目录；不会接续旧 NoPE 权重。复现旧 NoPE 实验时，训练命令加 `--no-remote-rope`，并明确指定旧实验目录。
 
 ## 3. 后台自动续训
 

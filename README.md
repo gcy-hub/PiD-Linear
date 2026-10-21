@@ -1,6 +1,6 @@
 # PixelDiT-T2I + QDM Halo2
 
-本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](docs/pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
+本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。PixelDiT 入口默认恢复四象限远程分支图像 Q/K 的二维 RoPE，使用独立的 `outputs/pixeldit-t2i-qdm-halo2-rope` 目录从原始权重训练。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](docs/pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
 
 # A: QDM + Halo Window
 

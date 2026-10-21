@@ -1,6 +1,6 @@
 # PixelDiT-QDM Halo2 验证记录
 
-2026-10-21，`linear-pid` 环境，node01 四张 A40，原生 1K 多长宽比。所有阶段均执行真实图片、Gemma 缓存、完整 14 层 MMDiT 和两层 PiT，累积为 1。
+2026-10-21，`linear-pid` 环境，node01 四张 A40，原生 1K 多长宽比。以下为恢复远程 RoPE 之前的 NoPE 版本记录。所有阶段均执行真实图片、Gemma 缓存、完整 14 层 MMDiT 和两层 PiT，累积为 1。
 
 | 阶段 | 每卡 batch | 有效 batch | 测试更新数 | 可训练参数 | 峰值显存 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -22,7 +22,24 @@
 ```bash
 conda activate linear-pid
 GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_qdm.sh \
-  --stage all --a1-steps 2 --a2-steps 2 --b-steps 2 \
+  --stage all --no-remote-rope --a1-steps 2 --a2-steps 2 --b-steps 2 \
   --save-steps 1 --validation-steps 0 --teacher-checkpoint "$PIXELDIT_BASE" \
   --workers 4 --threads 1 --output-root outputs/pixeldit-qdm-preflight
 ```
+
+## 恢复远程 RoPE 后的检查
+
+同日在上述四卡和 1K 设置下，图像 Q/K 在记忆统计及读取前加入原始全图二维 RoPE，其他算法及优化配置保持一致。
+
+| 阶段 | 每卡 batch | 有效 batch | 测试更新数 | 峰值显存 |
+| --- | ---: | ---: | ---: | ---: |
+| A1 | 4 | 16 | 2 | 6.16 GiB |
+| A2 | 8 | 32 | 2 | 12.99 GiB |
+| B | 8 | 32 | 2 | 13.47 GiB |
+
+- 10 项 CPU 检查通过，覆盖非正方形四象限求解与梯度的直接参考、教师及局部分支不变、远程 RoPE 对学生输出生效、LoRA 零增量、冻结参数、恢复下一次更新及后台阶段切换参数传递。
+- 四卡 A1 从第 1 步恢复至第 2 步，随后串行切换至 A2、B；检查各阶段 optimizer step、scheduler、累计 step、RoPE 配置及有效 batch，均符合预期。临时测试权重在检查后删除。
+- 未出现 OOM 或非有限 loss。DDP 对 depthwise 卷积报告梯度 stride 与 bucket view 不同的性能警告，训练正常完成；该警告尚未做性能优化。
+- 当前只验证代码及恢复流程，未验证此改动是否能改善重复人脸或空间错位。正式实验从原始 PixelDiT 权重开始，保留原 NoPE 输出作对照。
+
+使用前述短程命令时，将 `--no-remote-rope` 改为 `--remote-rope` 并使用独立输出目录，即可检查此版本。正式后台命令见 [运行说明](pixeldit-qdm.md)。

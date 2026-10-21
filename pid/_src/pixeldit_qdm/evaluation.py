@@ -46,6 +46,8 @@ def render_gallery(net,config,output,rank=0,world=1,tracker=None,step=0,suite='q
     settings=dict(backbone='pixeldit_t2i',conditioning='prompt-only',steps=50,cfg=2.75,shift=config.flow_shift,
                   training_resolution=config.resolution,
                   local_attention=local_layout(config),memory_mode=config.memory_mode,model_identity=model_identity)
+    if config.remote_rope:
+        settings['remote_rope'] = True
     try:
         with torch.no_grad():
             for case in tqdm(cases[rank::world],desc=f'PixelDiT gallery rank{rank}'):

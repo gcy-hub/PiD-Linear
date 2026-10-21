@@ -57,7 +57,7 @@ class SpatialVDA(nn.Module):
         self.to_out_linear = nn.Linear(dim, dim, bias=False)
         self.last_alpha = None
 
-    def features(self, qkv, grid):
+    def features(self, qkv, grid, pos_img=None):
         h, w = grid
         b = qkv[0].shape[0]
         features = [F.silu(qkv[0])]
@@ -68,15 +68,19 @@ class SpatialVDA(nn.Module):
         q, k, v = features
         q = F.normalize(q.float(), dim=-1).to(q.dtype)
         k = F.normalize(k.float(), dim=-1).to(k.dtype)
+        # Rotate in the original global image coordinates, after spatial K convolution
+        # and nonlinear features; never rotate V or restart coordinates per quadrant.
+        if pos_img is not None:
+            q, k = apply_rotary_emb(q, k, freqs_cis=pos_img)
         return q, k, v
 
-    def forward(self, x, y, qkv, text_qkv, grid, text_mask, inference=False, order="row"):
+    def forward(self, x, y, qkv, text_qkv, grid, text_mask, inference=False, order="row", pos_img=None):
         if inference and torch.is_grad_enabled():
             raise RuntimeError("VDA inference path requires torch.no_grad()")
         b, n, c = x.shape
         rsize = self.region_size
         heads, d = self.heads, self.d
-        q, k, v = self.features(qkv, grid)
+        q, k, v = self.features(qkv, grid, pos_img=pos_img)
         qp, valid = pack_regions(q, grid, rsize)
         kp, _ = pack_regions(k, grid, rsize)
         vp, _ = pack_regions(v, grid, rsize)
@@ -148,6 +152,7 @@ class JointVDN(nn.Module):
         self.local_mode = "window"
         self.local_halo = 0
         self.window_offset = 0
+        self.remote_rope = False
 
     def set_context_parallel_group(self, group):
         if group is not None:
@@ -217,14 +222,19 @@ class JointVDN(nn.Module):
 
     def student_forward(self, x, y, pos_img, pos_txt=None, *, grid_size, text_valid_mask=None, attn_mask=None):
         qkv, tqkv = self.raw_qkv(x, y)
+        if self.remote_rope and pos_img is None:
+            raise ValueError("Remote RoPE requires the original image position frequencies")
+        remote_position = {"pos_img": pos_img} if self.remote_rope else {}
         if self.component == "vda":
             return self.linear_attention(
-                x, y, qkv, tqkv, grid_size, text_valid_mask, self.inference_mode, order=self.scan_order
+                x, y, qkv, tqkv, grid_size, text_valid_mask, self.inference_mode, order=self.scan_order,
+                **remote_position,
             ), torch.zeros_like(y)
         out_x, out_y = self.local(x, y, qkv, tqkv, pos_img, pos_txt, grid_size, attn_mask)
         if self.component == "hybrid":
             out_x = out_x + self.linear_attention(
-                x, y, qkv, tqkv, grid_size, text_valid_mask, self.inference_mode, order=self.scan_order
+                x, y, qkv, tqkv, grid_size, text_valid_mask, self.inference_mode, order=self.scan_order,
+                **remote_position,
             )
         return out_x, out_y
 
@@ -244,11 +254,13 @@ class JointVDN(nn.Module):
         )
 
 
-def convert_attention(net, region_size=8, local_mode="window", local_halo=0, local_shift=4, local_chunk=16):
+def convert_attention(net, region_size=8, local_mode="window", local_halo=0, local_shift=4, local_chunk=16,
+                      remote_rope=False):
     for index,block in enumerate(net.patch_blocks):
         if isinstance(block.attn, JointVDN):
             raise ValueError("Already converted; reconstruct checkpoint architecture instead")
         block.attn = JointVDN(block.attn, region_size, region_chunk=local_chunk)
+        block.attn.remote_rope = remote_rope
         block.attn.local_mode=local_mode
         block.attn.local_halo=local_halo if local_mode=="halo" else 0
         block.attn.window_offset=local_shift if local_mode=="alternating_shift" and index%2 else 0

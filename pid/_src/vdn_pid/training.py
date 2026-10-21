@@ -81,7 +81,8 @@ def build_student(config, stage, device, load_base=True):
             load_original(net, config.teacher_path)
     net.requires_grad_(False).to(dtype=torch.bfloat16)
     convert_attention(net, config.region_size, local_mode=config.local_mode, local_halo=config.local_halo,
-                      local_shift=config.local_shift, local_chunk=config.local_chunk)
+                      local_shift=config.local_shift, local_chunk=config.local_chunk,
+                      remote_rope=config.remote_rope)
     if config.memory_mode == "fixed4":
         from .spatial_memory import replace_memory
 
@@ -198,6 +199,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "base_relative_path": os.path.relpath(Path(config.teacher_path).resolve(), Path(config.weights_root).resolve()),
         "source_commit": "e262cb5770b3dc992d4f44f251cd17bbfe0c4d8b",
         "memory_mode": config.memory_mode,
+        "remote_rope": config.remote_rope,
         "backbone": config.backbone,
         "backbone_settings": backbone_settings,
         "local_attention": local_layout(config),
@@ -317,7 +319,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
         tracker = swanlab
         swanlab.init(
             project="PixelDiT-QDM-Halo2" if config.backbone == "pixeldit_t2i" else "PiD-VDN",
-            experiment_name=stage if config.memory_mode == "vda" else f"{stage}-{config.memory_mode}",
+            experiment_name=(stage if config.memory_mode == "vda" else f"{stage}-{config.memory_mode}")
+                            + ("-rope" if config.remote_rope else ""),
             config={**config.to_dict(), **settings},
             mode="online" if config.swanlab_mode == "cloud" else config.swanlab_mode,
             log_dir=str(stage_dir / "swanlog"),
@@ -331,6 +334,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
                 {
                     "stage": stage,
                     "memory_mode": config.memory_mode,
+                    "remote_rope": config.remote_rope,
                     "batch": settings,
                     "trainable_parameters": sum(p.numel() for p in net.parameters() if p.requires_grad),
                     "frozen_parameters": sum(p.numel() for p in net.parameters() if not p.requires_grad),
@@ -616,6 +620,7 @@ def parse_args(argv=None):
     ):
         parser.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
     parser.add_argument("--flow-shift", type=float, default=defaults.flow_shift)
+    parser.add_argument("--remote-rope", action=argparse.BooleanOptionalAction, default=defaults.remote_rope)
     parser.add_argument("--no-activation-checkpointing", action="store_true")
     parser.add_argument("--allow-batch-change", action="store_true")
     parser.add_argument("--allow-schedule-change", action="store_true")

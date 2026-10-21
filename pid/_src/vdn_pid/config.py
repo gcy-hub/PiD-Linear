@@ -94,6 +94,7 @@ class VDNConfig:
     local_shift: int = 4
     local_chunk: int = 16
     memory_mode: str = "vda"
+    remote_rope: bool = False
     stage: str = "all"
     preset: str = "4gpu"
     seed: int = 42
@@ -158,6 +159,8 @@ def verify_memory_mode(config, saved_config):
     saved_mode = saved_config.get("memory_mode", "vda")
     if saved_mode != config.memory_mode:
         raise ValueError(f"Checkpoint memory_mode={saved_mode} differs from requested {config.memory_mode}")
+    if saved_config.get("remote_rope", False) != config.remote_rope:
+        raise ValueError("Checkpoint remote_rope differs; use a new experiment directory")
 
 
 def local_layout(config):

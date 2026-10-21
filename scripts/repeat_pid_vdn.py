@@ -156,6 +156,7 @@ def training_command(root, stage, request):
             "local_shift",
             "local_chunk",
             "memory_mode",
+            "remote_rope",
             "seed",
             "workers",
             "threads",
@@ -175,6 +176,8 @@ def training_command(root, stage, request):
         if name == "activation_checkpointing":
             if not value:
                 arguments.append("--no-activation-checkpointing")
+        elif name == "remote_rope":
+            arguments.append("--remote-rope" if value else "--no-remote-rope")
         elif name in ("allow_batch_change", "allow_schedule_change"):
             if value:
                 arguments.append("--" + name.replace("_", "-"))

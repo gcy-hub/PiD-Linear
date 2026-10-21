@@ -88,8 +88,8 @@ class SpatialDeltaMemory(nn.Module):
         elif mode != "fixed":
             raise ValueError(mode)
 
-    def forward(self, x, y, qkv, text_qkv, grid, text_mask, inference=False, order="row"):
-        q, k, v = self.base.features(qkv, grid)
+    def forward(self, x, y, qkv, text_qkv, grid, text_mask, inference=False, order="row", pos_img=None):
+        q, k, v = self.base.features(qkv, grid, pos_img=pos_img)
         beta = torch.sigmoid(self.base.beta_proj(x))
         b, n, c = x.shape
         if self.mode == "fixed":
