@@ -168,6 +168,7 @@ def training_command(root, stage, request):
             "lora_rank",
             "lora_alpha",
             "activation_checkpointing",
+            "training_data", "allow_upscale", "validation_cases", "validation_resolution", "attention_batch_chunk",
         )
         saved = {key: inherited[key] for key in common if key in inherited}
     arguments = []
@@ -180,7 +181,7 @@ def training_command(root, stage, request):
                 arguments.append("--no-activation-checkpointing")
         elif name == "remote_rope":
             arguments.append("--remote-rope" if value else "--no-remote-rope")
-        elif name in ("allow_batch_change", "allow_schedule_change"):
+        elif name in ("allow_batch_change", "allow_schedule_change", "allow_upscale"):
             if value:
                 arguments.append("--" + name.replace("_", "-"))
         else:

@@ -552,7 +552,7 @@ class PidNet(PixDiT_T2I):
             x_pixels = x_pixels.reshape(B * L_local, P2, self.pixel_hidden_size)
         for blk in self.pixel_blocks:
             pit_chunk_size = getattr(self, "pit_chunk_size", 0)
-            if pit_chunk_size and self.training and torch.is_grad_enabled():
+            if pit_chunk_size and self.training:
                 x_pixels = blk.forward_chunked(
                     x_pixels, s_cond, H, W, self.patch_size, mask,
                     chunk_size=pit_chunk_size,

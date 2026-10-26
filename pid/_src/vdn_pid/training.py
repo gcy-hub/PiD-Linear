@@ -29,7 +29,7 @@ from pid._src.networks.flow_matching import FlowMatchingTrainer
 
 from .attention import JointVDN, convert_attention, execution_mode
 from .checkpoint import latest_state, load_delta, load_parent_delta, load_state, save_state
-from .config import local_layout, verify_local_layout, normalize_full_attention_layers, STAGES, VDNConfig, resume_metadata, verify_memory_mode
+from .config import local_layout, verify_local_layout, normalize_full_attention_layers, STAGES, VDNConfig, resume_metadata, verify_memory_mode, training_index, verify_training_layout
 from .lora import configure_stage, optimizer_groups
 
 
@@ -57,6 +57,8 @@ class AlignCallback:
             text_error = (sy - ty).square().sum()
             denominator = (tx.square().sum() + ty.square().sum()).clamp_min(1e-30)
             loss = (image_error + text_error) / denominator
+            image_numel, text_numel = tx.numel(), ty.numel()
+            del sx, sy, tx, ty
             if not torch.isfinite(loss):
                 raise FloatingPointError("Nonfinite A1 alignment")
             (loss * self.scale).backward()
@@ -66,8 +68,8 @@ class AlignCallback:
                 self.student_ms = timing[0].elapsed_time(timing[1])
             self.metrics = {
                 "relative_mse": loss.detach().item(),
-                "image_mse": image_error.detach().item() / tx.numel(),
-                "text_mse": text_error.detach().item() / ty.numel(),
+                "image_mse": image_error.detach().item() / image_numel,
+                "text_mse": text_error.detach().item() / text_numel,
             }
 
 
@@ -90,6 +92,9 @@ def build_student(config, stage, device, load_base=True):
     elif config.memory_mode != "vda":
         raise ValueError(f"Unknown memory_mode: {config.memory_mode}")
     configure_stage(net, stage, config.lora_rank, config.lora_alpha)
+    for block in net.patch_blocks:
+        if isinstance(block.attn, JointVDN):
+            block.attn.attention_batch_chunk = config.attention_batch_chunk
     net.activation_checkpointing = config.activation_checkpointing
     net.pit_chunk_size = config.pit_chunk_size
     return net.to(device)
@@ -175,8 +180,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
     stage_dir = Path(config.output_root) / stage
     stage_dir.mkdir(parents=True, exist_ok=True)
     lock = lock_training_run(stage_dir, rank)
-    subset = Path(config.train_index_root) if config.train_index_root else Path(config.subset_root) / str(50000 if stage == "b" else 20000)
-    dataset = RawImageDataset(subset, resolution=config.resolution, text_cache_root=config.text_cache_root or None)
+    subset = training_index(config, stage)
+    dataset = RawImageDataset(subset, resolution=config.resolution, text_cache_root=config.text_cache_root or None, allow_upscale=config.allow_upscale)
     if dataset.metadata.get('synthetic') and not dataset.metadata.get('synthetic_complete'):
         raise ValueError('Synthetic image generation has not completed')
     checkpoint = latest_state(stage_dir) if config.resume == "auto" else None
@@ -205,6 +210,10 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "backbone": config.backbone,
         "backbone_settings": backbone_settings,
         "local_attention": local_layout(config),
+        "training_data": config.training_data,
+        "training_resolution": config.resolution,
+        "training_index": str(subset.resolve()),
+        "allow_upscale": config.allow_upscale,
         "subset_fingerprint": dataset.metadata["fingerprint"],
         "data_fingerprint": dataset.metadata.get("source_fingerprint", dataset.metadata["fingerprint"]),
         "text_cache_fingerprint": dataset.text_cache.fingerprint if dataset.text_cache else None,
@@ -213,12 +222,13 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "swanlab_run_id": broadcast_object(uuid.uuid4().hex if rank == 0 else None, rank),
     }
     if payload:
+        verify_training_layout(config, payload["config"])
         if payload["config"].get("backbone", "pid") != config.backbone:
             raise ValueError("Resume backbone mismatch")
         if payload["metadata"].get("backbone_settings") != backbone_settings:
             raise ValueError("Resume backbone settings mismatch")
         for key, legacy in (("resolution", "2048"), ("flow_shift", 6.0), ("shift_base_size", 2048)):
-            if payload["config"].get(key, legacy) != getattr(config, key):
+            if str(payload["config"].get(key, legacy)) != str(getattr(config, key)):
                 raise ValueError(f"Resume {key} mismatch")
         verify_memory_mode(config, payload["config"])
         verify_local_layout(config,payload["config"])
@@ -245,12 +255,13 @@ def run_stage(config, stage, rank, world, device, parent=None):
     )
     if parent and not payload:
         previous = load_state(parent)
+        verify_training_layout(config, previous["config"])
         if previous["config"].get("backbone", "pid") != config.backbone:
             raise ValueError("Parent backbone mismatch")
         if previous["metadata"].get("backbone_settings") != backbone_settings:
             raise ValueError("Parent backbone settings mismatch")
         for key, legacy in (("resolution", "2048"), ("flow_shift", 6.0), ("shift_base_size", 2048)):
-            if previous["config"].get(key, legacy) != getattr(config, key):
+            if str(previous["config"].get(key, legacy)) != str(getattr(config, key)):
                 raise ValueError(f"Parent {key} mismatch")
         verify_memory_mode(config, previous["config"])
         verify_local_layout(config,previous["config"])
@@ -611,6 +622,8 @@ def parse_args(argv=None):
         "resume",
         "init_from",
         "swanlab_mode",
+        "training_data",
+        "validation_cases",
     ):
         parser.add_argument("--" + name.replace("_", "-"), default=getattr(defaults, name))
     for name in (
@@ -636,6 +649,8 @@ def parse_args(argv=None):
         "lora_rank",
         "lora_alpha",
         "pit_chunk_size",
+        "validation_resolution",
+        "attention_batch_chunk",
     ):
         parser.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
     parser.add_argument("--flow-shift", type=float, default=defaults.flow_shift)
@@ -643,11 +658,16 @@ def parse_args(argv=None):
     parser.add_argument("--no-activation-checkpointing", action="store_true")
     parser.add_argument("--allow-batch-change", action="store_true")
     parser.add_argument("--allow-schedule-change", action="store_true")
+    parser.add_argument("--allow-upscale", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = vars(parser.parse_args(argv))
     dry = args.pop("dry_run")
     args["activation_checkpointing"] = not args.pop("no_activation_checkpointing")
     config = VDNConfig(**args)
+    if config.training_data not in ("subsets", "full") or config.attention_batch_chunk < 0:
+        parser.error("Invalid training-data or attention-batch-chunk")
+    if config.validation_resolution not in (2048, 4096):
+        parser.error("Invalid validation resolution")
     try:
         retained = normalize_full_attention_layers(config.full_attention_layers)
         if len(retained) == 14:
@@ -657,8 +677,8 @@ def parse_args(argv=None):
         parser.error(str(error))
     if config.backbone not in ("pid", "pixeldit_t2i"):
         parser.error("backbone must be pid or pixeldit_t2i")
-    if config.resolution not in ("1024", "2048") or config.flow_shift <= 0 or config.shift_base_size < 1:
-        parser.error("Training resolution must be 1024 or 2048, and shift settings must be positive")
+    if config.resolution not in ("1024", "2048", "3072", "3840", "4096") or config.flow_shift <= 0 or config.shift_base_size < 1:
+        parser.error("Invalid training resolution, and shift settings must be positive")
     if min(config.a1_batch_size,config.a2_batch_size,config.b_batch_size,config.a1_steps,config.a2_steps,config.b_steps)<1:
         parser.error("Stage batches/steps must be positive")
     if config.stage not in ("all", *STAGES):
@@ -692,7 +712,7 @@ def main(argv=None):
     for path in (
         config.teacher_path,
         Path(config.index_root) / "index.json",
-        Path(config.train_index_root) / 'index.json' if config.train_index_root else Path(config.subset_root) / "subsets.json",
+        training_index(config, stages[0]) / "index.json",
     ):
         if not Path(path).exists():
             raise FileNotFoundError(path)

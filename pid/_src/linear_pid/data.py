@@ -299,8 +299,9 @@ def resize_crop(image, bucket, resolution="2048", allow_upscale=False):
 
 
 class RawImageDataset(Dataset):
-    def __init__(self, index_root, resolution="2048", text_cache_root=None):
+    def __init__(self, index_root, resolution="2048", text_cache_root=None, allow_upscale=False):
         self.root, self.resolution = Path(index_root), str(resolution)
+        self.allow_upscale = allow_upscale
         self.metadata = json.loads((self.root / "index.json").read_text())
         self.offsets = np.load(self.root / "offsets.npy", mmap_mode="r")
         self._stream = None
@@ -344,7 +345,7 @@ class RawImageDataset(Dataset):
         try:
             with Image.open(record["path"]) as image:
                 image = ImageOps.exif_transpose(image).convert("RGB")
-                image = resize_crop(image, record["bucket"], self.resolution)
+                image = resize_crop(image, record["bucket"], self.resolution, allow_upscale=self.allow_upscale)
                 array = np.array(image, dtype=np.uint8, copy=True)
             # uint8 remains compact in worker/prefetch memory; normalization occurs on GPU.
             return {

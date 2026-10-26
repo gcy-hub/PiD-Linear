@@ -151,6 +151,7 @@ class JointVDN(nn.Module):
         self.scan_order = "row"
         self.local_mode = "window"
         self.local_halo = 0
+        self.attention_batch_chunk = 0
         self.window_offset = 0
         self.remote_rope = False
 
@@ -221,6 +222,31 @@ class JointVDN(nn.Module):
         )
 
     def student_forward(self, x, y, pos_img, pos_txt=None, *, grid_size, text_valid_mask=None, attn_mask=None):
+        chunk = self.attention_batch_chunk
+        if chunk and x.shape[0] > chunk and self.training and torch.is_grad_enabled():
+            from functools import partial
+            from torch.utils.checkpoint import checkpoint
+
+            # Samples have independent memories and no batch normalization.
+            # Retain the real training batch/loss, but checkpoint attention
+            # contributions in bounded sample chunks instead of keeping four
+            # full 4K attention graphs alive together.
+            image_outputs, text_outputs = [], []
+            for start in range(0, x.shape[0], chunk):
+                stop = min(start + chunk, x.shape[0])
+                def sliced(mask):
+                    return mask[start:stop] if mask is not None and mask.shape[0] == x.shape[0] else mask
+                function = partial(self._student_forward, grid_size=grid_size,
+                                   text_valid_mask=sliced(text_valid_mask), attn_mask=sliced(attn_mask))
+                image, text = checkpoint(function, x[start:stop], y[start:stop], pos_img, pos_txt,
+                                         use_reentrant=False)
+                image_outputs.append(image)
+                text_outputs.append(text)
+            return torch.cat(image_outputs, dim=0), torch.cat(text_outputs, dim=0)
+        return self._student_forward(x, y, pos_img, pos_txt, grid_size=grid_size,
+                                     text_valid_mask=text_valid_mask, attn_mask=attn_mask)
+
+    def _student_forward(self, x, y, pos_img, pos_txt=None, *, grid_size, text_valid_mask=None, attn_mask=None):
         qkv, tqkv = self.raw_qkv(x, y)
         if self.remote_rope and pos_img is None:
             raise ValueError("Remote RoPE requires the original image position frequencies")

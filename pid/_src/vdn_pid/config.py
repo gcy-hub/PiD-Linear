@@ -120,6 +120,11 @@ class VDNConfig:
     lora_alpha: int = 64
     pit_chunk_size: int = 2048
     activation_checkpointing: bool = True
+    training_data: str = "subsets"
+    allow_upscale: bool = False
+    validation_resolution: int = 2048
+    validation_cases: str = ""
+    attention_batch_chunk: int = 0
 
     def to_dict(self):
         return asdict(self)
@@ -192,3 +197,33 @@ def normalize_full_attention_layers(value, count=14):
 def verify_local_layout(config,saved_config):
     if local_layout(config)!=local_layout(saved_config):
         raise ValueError('Checkpoint local attention layout differs; use a new experiment directory')
+
+
+def training_index(config, stage):
+    if getattr(config, "train_index_root", ""):
+        return Path(config.train_index_root)
+    if config.training_data == "full":
+        return Path(config.index_root)
+    if config.training_data != "subsets":
+        raise ValueError("training_data must be full or subsets")
+    return Path(config.subset_root) / str(50000 if stage == "b" else 20000)
+
+
+def verify_training_layout(config, saved_config):
+    defaults = dict(training_data="subsets", resolution=2048, allow_upscale=False)
+    if any(str(getattr(config, key)) != str(saved_config.get(key, default)) for key, default in defaults.items()):
+        raise ValueError("Checkpoint training layout differs; use a new experiment directory")
+
+
+def select_validation_cases(config, cases):
+    requested = [x.strip() for x in getattr(config, "validation_cases", "").split(",") if x.strip()]
+    if not requested:
+        return cases
+    resolution = str(getattr(config, "validation_resolution", 2048))
+    available = {f"{c['kind']}_{c['ordinal']:03d}": c for c in cases if str(c['resolution']) == resolution}
+    missing = set(requested) - set(available)
+    if missing:
+        raise ValueError(f"Missing validation cases at {resolution}: {sorted(missing)}")
+    if len(requested) != len(set(requested)):
+        raise ValueError("Duplicate validation cases")
+    return [available[key] for key in requested]

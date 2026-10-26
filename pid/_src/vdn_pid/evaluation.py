@@ -15,7 +15,7 @@ from pid._src.linear_pid.training import init_distributed
 
 from .attention import JointVDN, execution_mode
 from .checkpoint import delta_state, load_delta, load_state, verify_base
-from .config import VDNConfig, local_layout
+from .config import VDNConfig, local_layout, select_validation_cases
 from .training import build_student
 
 
@@ -80,7 +80,9 @@ def render_gallery(
     should_stop=None,
     completion=None,
 ):
+    include_4k = include_4k or getattr(config, "validation_resolution", 2048) == 4096
     cases, metadata = asset_cases(config.gallery_root, "quick" if suite == "quick" else "full", include_4k)
+    cases = select_validation_cases(config, cases)
     source = json.loads((Path(config.index_root) / "index.json").read_text())
     if metadata["data_fingerprint"] != source.get("source_fingerprint", source["fingerprint"]):
         raise ValueError("Gallery/source index mismatch")
