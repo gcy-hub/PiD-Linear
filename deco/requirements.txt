@@ -1,0 +1,8 @@
+torch==2.10.0
+torchvision==0.25.0
+transformers==4.57.1
+numpy
+pillow
+tqdm
+safetensors
+swanlab

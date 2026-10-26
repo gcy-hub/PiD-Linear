@@ -54,3 +54,8 @@ swanlog/
 
 # Also ignore an output directory linked into a worktree
 /outputs
+
+# DeCo-QDM local tests and caches
+/deco/tests/
+/deco/outputs/
+/deco/.cache/
