@@ -225,6 +225,7 @@ class JointVDN(nn.Module):
         chunk = self.attention_batch_chunk
         if chunk and x.shape[0] > chunk and self.training and torch.is_grad_enabled():
             from functools import partial
+
             from torch.utils.checkpoint import checkpoint
 
             # Samples have independent memories and no batch normalization.

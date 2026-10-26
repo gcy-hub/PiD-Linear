@@ -169,7 +169,7 @@ def _prepare_shard(args):
 
 def _prepare_index(
     dataset_root, output_root, workers=16, validation_size=1024, seed=42, resume=False, max_json_files=None,
-    image_verification="full",
+    image_verification="full", validation_ids=None,
 ):
     root, output = Path(dataset_root).resolve(), Path(output_root).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -187,6 +187,8 @@ def _prepare_index(
         "sources": {str(p): _source_signature(p) for p in sources},
         "schema": 1,
     }
+    if validation_ids:
+        build["reserved_validation_ids"] = sorted(set(validation_ids))
     if image_verification != "full":
         build["image_verification"] = image_verification
     signature = hashlib.sha256(json.dumps(build, sort_keys=True).encode()).hexdigest()
@@ -210,14 +212,21 @@ def _prepare_index(
             progress.set_postfix(accepted=totals["accepted"], rejected=sum(totals.values()) - totals["accepted"])
     # Split duplicate URL groups together; merge needs only group hashes, not image/caption payloads.
     groups = {}
+    reserved_ids = set(validation_ids or ())
+    found_ids, reserved_groups = set(), set()
     for source in sources:
         with (shard_dir / f"{source.stem}.jsonl").open() as stream:
             for line in stream:
                 record = json.loads(line)
                 group = hashlib.sha256(record["group"].encode()).hexdigest()
+                if record["id"] in reserved_ids:
+                    found_ids.add(record["id"])
+                    reserved_groups.add(group)
                 if group not in groups:
                     score = hashlib.sha256(f"{seed}:{group}".encode()).hexdigest()
                     groups[group] = (record["bucket"], score)
+    if reserved_ids - found_ids:
+        raise ValueError(f"Required validation images unavailable: {sorted(reserved_ids - found_ids)}")
     by_bucket = defaultdict(list)
     for group, (bucket, score) in groups.items():
         by_bucket[bucket].append((score, group))
@@ -232,6 +241,8 @@ def _prepare_index(
         # Leave at least one group for training in each represented bucket.
         limit = min(budgets[bucket], max(0, len(items) - 1))
         selected.update(group for _, group in sorted(items)[:limit])
+    # Reserve the requested image URL groups as a whole, including duplicates.
+    selected.update(reserved_groups)
     offsets, train, validation = [], defaultdict(list), []
     destination = output / "manifest.jsonl"
     temporary = destination.with_suffix(".tmp")
@@ -421,7 +432,7 @@ class GlobalBatchSampler(Sampler):
 
 def prepare_index(
     dataset_root, output_root, workers=16, validation_size=1024, seed=42, resume=False, max_json_files=None,
-    image_verification="full",
+    image_verification="full", validation_ids=None,
 ):
     if workers < 1 or validation_size < 0:
         raise ValueError("workers must be positive and validation-size nonnegative")
@@ -435,5 +446,5 @@ def prepare_index(
         except BlockingIOError as exc:
             raise RuntimeError(f"Another index preparation is running in {output}") from exc
         return _prepare_index(
-            dataset_root, output_root, workers, validation_size, seed, resume, max_json_files, image_verification
+            dataset_root, output_root, workers, validation_size, seed, resume, max_json_files, image_verification, validation_ids
         )

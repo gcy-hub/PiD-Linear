@@ -29,7 +29,17 @@ from pid._src.networks.flow_matching import FlowMatchingTrainer
 
 from .attention import JointVDN, convert_attention, execution_mode
 from .checkpoint import latest_state, load_delta, load_parent_delta, load_state, save_state
-from .config import local_layout, verify_local_layout, normalize_full_attention_layers, STAGES, VDNConfig, resume_metadata, verify_memory_mode, training_index, verify_training_layout
+from .config import (
+    STAGES,
+    VDNConfig,
+    local_layout,
+    normalize_full_attention_layers,
+    resume_metadata,
+    training_index,
+    verify_local_layout,
+    verify_memory_mode,
+    verify_training_layout,
+)
 from .lora import configure_stage, optimizer_groups
 
 
@@ -75,7 +85,8 @@ class AlignCallback:
 
 def build_student(config, stage, device, load_base=True):
     if config.backbone == "pixeldit_t2i":
-        from pid._src.pixeldit_qdm.runtime import build_net as make_net, load_net
+        from pid._src.pixeldit_qdm.runtime import build_net as make_net
+        from pid._src.pixeldit_qdm.runtime import load_net
         net = load_net(config.teacher_path) if load_base else make_net()
     else:
         net = build_net()

@@ -4,7 +4,7 @@
 
 可选执行 [原始 PixelDiT 合成数据 A1 对照](docs/pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
 
-原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支。
+原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支；**全量数据 4K 训练也已合入当前 main**。已有 50K 导出包的服务器可以自动补齐数据、构建缓存，再串行运行 A1／A2／B，八卡配置和完整命令见 [PiD-QDM 4K 跨服务器训练](docs/pid-qdm-4k-remote.md)。
 
 ## DeCo-QDM
 

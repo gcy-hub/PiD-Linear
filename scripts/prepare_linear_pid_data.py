@@ -12,6 +12,8 @@ def main():
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--validation-size", type=int, default=1024)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--validation-ids", type=lambda v: [x.strip() for x in v.split(",") if x.strip()],
+                        help="Always hold out these sample IDs and duplicate URL groups")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
         "--image-verification", choices=("full", "header"), default="full",

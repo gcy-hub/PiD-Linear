@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "kind": "generated",
+      "ordinal": 10,
+      "seed": 1052,
+      "caption": "A green parrot on a wooden branch, vivid plumage, natural color."
+    },
+    {
+      "kind": "generated",
+      "ordinal": 29,
+      "seed": 1071,
+      "caption": "A bright orange bicycle leaning against a pale blue wall."
+    },
+    {
+      "kind": "generated",
+      "ordinal": 3,
+      "seed": 1045,
+      "caption": "A blue cup to the left of a red apple on a wooden table, daylight."
+    },
+    {
+      "kind": "generated",
+      "ordinal": 9,
+      "seed": 1051,
+      "caption": "A small child and a golden retriever walking together along a beach."
+    },
+    {
+      "kind": "generated",
+      "ordinal": 19,
+      "seed": 1061,
+      "caption": "A brown tabby cat sitting in a sunlit window, detailed whiskers."
+    },
+    {
+      "kind": "generated",
+      "ordinal": 22,
+      "seed": 1064,
+      "caption": "A farmer holding a basket of vegetables beside a field."
+    },
+    {
+      "kind": "real",
+      "ordinal": 11,
+      "seed": 53,
+      "caption": "A dark-skinned man with a beard and short dark hair stands centered in an outdoor urban setting, looking directly forward. He wears dark oval sunglasses, a gold-colored patterned choker necklace, and silver hoop earrings in both ears. He is dressed in a loose-fitting white garment, resembling a robe or tunic, with long sleeves. A brown leather pouch with a fur texture and decorative tassels is slung across his body, resting on his right hip, with his hands clasped over it. The background is blurred, showing a crowd of people in a street. To the man's right, another man with a beard is partially visible, wearing a gray t-shirt. Buildings with orange and white facades are visible further back under an overcast sky.",
+      "sample_id": "0017/000813",
+      "source_url": "https://images.pexels.com/photos/13813477/pexels-photo-13813477.jpeg"
+    },
+    {
+      "kind": "real",
+      "ordinal": 28,
+      "seed": 70,
+      "caption": "A woman sits on a couch with three children. The woman is holding a baby on her lap while a toddler looks at a tablet. To the right, two boys are seated on the couch; one is wearing glasses and looking at the tablet, while the other is reading a book. A blue blanket is draped over the legs of the two boys. A framed piece of artwork with text hangs on the wall behind them.",
+      "sample_id": "0247/000323",
+      "source_url": "https://images.unsplash.com/photo-1585945180888-a2397737fa81?ixid=M3w3NzUzODR8MHwxfHNlYXJjaHw0MTV8fGZhbWlseSUyMG9mJTIwdGhyZWV8ZW58MHx8fHwxNzU1ODIzMTI2fDA&ixlib=rb-4.1.0"
+    }
+  ]
+}
