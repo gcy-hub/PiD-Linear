@@ -1,0 +1,11 @@
+# Install into the existing linear-pid environment; do not replace its PyTorch.
+diffusers==0.37.1
+transformers==4.57.1
+accelerate>=1.7
+safetensors
+sentencepiece
+protobuf
+beautifulsoup4
+ftfy
+Pillow
+tqdm

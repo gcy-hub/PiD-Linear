@@ -4,6 +4,12 @@
 
 可选执行 [原始 PixelDiT 合成数据 A1 对照](docs/pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
 
+原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支。
+
+## PixArt-Σ 数据生成与迁移
+
+八卡、每卡 batch 2 的生成脚本，以及模型下载、数据打包和跨服务器断点续生成命令，见 [PixArt 数据生成说明](grafting/tools/README-pixart.md)。
+
 # A: QDM + Halo Window
 
 This local research branch changes only QDM's image Local Softmax visibility. Four fixed-quadrant memory states, native image/text RoPE in the Softmax path, global text queries, shared pretrained projections, two PiT blocks and the original distillation objectives remain unchanged. Start A1 from the official undistilled PiD v1.5 FLUX weights; A2 loads this run's A1 and B loads this run's A2. Existing QDM fine-tuned weights are not used for this experiment.
