@@ -96,6 +96,7 @@ class VDNConfig:
     local_chunk: int = 16
     memory_mode: str = "vda"
     remote_rope: bool = False
+    full_attention_layers: str = ""
     stage: str = "all"
     preset: str = "4gpu"
     seed: int = 42
@@ -167,9 +168,25 @@ def verify_memory_mode(config, saved_config):
 def local_layout(config):
     def get(key,default):return config.get(key,default) if isinstance(config,dict) else getattr(config,key,default)
     mode=get('local_mode','window')
-    return dict(schema=1,mode=mode,region_size=get('region_size',8),
+    result = dict(schema=1,mode=mode,region_size=get('region_size',8),
         halo=get('local_halo',0) if mode=='halo' else 0,
         shift=get('local_shift',4) if mode=='alternating_shift' else 0)
+    retained = normalize_full_attention_layers(get('full_attention_layers', ''))
+    if retained:
+        result['full_attention_layers'] = retained
+    return result
+
+
+def normalize_full_attention_layers(value, count=14):
+    if value is None or value == '':
+        return []
+    if isinstance(value, str):
+        value = [int(part.strip()) for part in value.split(',')]
+    value = list(value)
+    if (len(value) != len(set(value)) or
+            any(not isinstance(i, int) or isinstance(i, bool) or not 0 <= i < count for i in value)):
+        raise ValueError(f'Full Attention indices must be unique integers in [0, {count-1}]')
+    return sorted(value)
 
 
 def verify_local_layout(config,saved_config):

@@ -13,11 +13,14 @@ from pid._src.linear_pid.data import atomic_json, sha256_file
 
 
 def delta_state(net):
+    from .attention import JointVDN
+    prefixes = tuple(f'patch_blocks.{i}.attn.' for i, block in enumerate(net.patch_blocks)
+                     if isinstance(block.attn, JointVDN))
     return {
         k: v
         for k, v in net.state_dict().items()
         if ".orig." not in k or ".A." in k or ".B." in k
-        if "patch_blocks." in k and ".attn." in k
+        if k.startswith(prefixes)
     }
 
 

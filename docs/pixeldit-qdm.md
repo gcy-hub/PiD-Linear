@@ -110,7 +110,31 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --standalone --nproc_per_node=4 \
 
 当前代码的实际训练、推理及恢复检查见 [验证记录](pixeldit-qdm-verification.md)。
 
-## 5. 用原始 PixelDiT 合成图像进行 A1 对照
+## 5. 选择性保留 Full Attention
+
+`--full-attention-layers 2,3,4,5` 按从 0 开始的 MMDiT 索引保留四层原始 Full Attention，其余十层使用 Local Softmax + Halo2 + 四象限 QDM。保留层在三个阶段都冻结，B 阶段也不添加 LoRA；两层 PiT 保持原样。新实验从原始 PixelDiT 初始化，不加载旧的全替换学生。恢复与阶段衔接会检查层布局，独立推理从 checkpoint 配置重建模型。
+
+使用之前准备好的图片、20K/50K 子集与 Gemma 文本缓存，原生约 1K 多长宽比训练。默认 A1/A2/B 为 500/1000/10000 步；每卡 bs 为 4/8/8、累积 1；每 50 步保存，每 500 步验证。远程分支不使用 RoPE，局部分支和 PiT 保留原始 RoPE，与之前测量各层 MSE 的模型设置一致。
+
+在前面的资源变量准备完成后，启动后台串行训练：
+
+```bash
+conda activate linear-pid
+export PIXELDIT_PARTIAL_RUN="$PWD/outputs/pixeldit-t2i-qdm-halo2-full-2-3-4-5-node01"
+GPU_IDS=0,1,2,3 CPU_THREADS=1 \
+bash scripts/train_pixeldit_partial_full_node01.sh \
+  --weights-root "$PID_WEIGHTS_ROOT" --teacher-checkpoint "$PIXELDIT_BASE" \
+  --index-root "$PID_INDEX_ROOT" --text-cache-root "$PID_TEXT_CACHE_ROOT" \
+  --subset-root "$PID_VDN_SUBSET_ROOT" --gallery-root "$PID_GALLERY_ROOT"
+
+# 查看日志、停止后台续训。停止后不会自动重启。
+tail -f "$PIXELDIT_PARTIAL_RUN/repeat/latest-training.log"
+python -m scripts.repeat_pid_vdn --stop --output-root "$PIXELDIT_PARTIAL_RUN"
+```
+
+控制器约每 20 分钟请求保存，并更新控制器与训练子进程。重新运行同一命令会从相同目录恢复。已有全替换模型的输出目录不受影响。可用 `--a1-steps`、`--a2-steps`、`--b-steps` 和三个 `--*-batch-size` 参数覆盖默认预算。
+
+## 6. 用原始 PixelDiT 合成图像进行 A1 对照
 
 此入口先用原始、未修改的 PixelDiT-T2I 生成正方形 1024×1024 图像，再从原始权重开始 QDM Halo2 的 A1。生成直接读取原有 Gemma caption 缓存和原生 CFG 负提示词缓存，采用 50 步、CFG 2.75、shift 4，不加载 Gemma、VAE 或已有学生权重。
 

@@ -158,6 +158,7 @@ def training_command(root, stage, request):
             "local_chunk",
             "memory_mode",
             "remote_rope",
+            "full_attention_layers",
             "seed",
             "workers",
             "threads",

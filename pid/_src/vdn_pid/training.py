@@ -27,9 +27,9 @@ from pid._src.linear_pid.training import broadcast_object, consensus, init_distr
 from pid._src.models.latent_noising import LatentNoiser, LatentNoisingConfig
 from pid._src.networks.flow_matching import FlowMatchingTrainer
 
-from .attention import convert_attention, execution_mode
+from .attention import JointVDN, convert_attention, execution_mode
 from .checkpoint import latest_state, load_delta, load_parent_delta, load_state, save_state
-from .config import local_layout, verify_local_layout, STAGES, VDNConfig, resume_metadata, verify_memory_mode
+from .config import local_layout, verify_local_layout, normalize_full_attention_layers, STAGES, VDNConfig, resume_metadata, verify_memory_mode
 from .lora import configure_stage, optimizer_groups
 
 
@@ -82,7 +82,7 @@ def build_student(config, stage, device, load_base=True):
     net.requires_grad_(False).to(dtype=torch.bfloat16)
     convert_attention(net, config.region_size, local_mode=config.local_mode, local_halo=config.local_halo,
                       local_shift=config.local_shift, local_chunk=config.local_chunk,
-                      remote_rope=config.remote_rope)
+                      remote_rope=config.remote_rope, full_attention_layers=config.full_attention_layers)
     if config.memory_mode == "fixed4":
         from .spatial_memory import replace_memory
 
@@ -273,8 +273,10 @@ def run_stage(config, stage, rank, world, device, parent=None):
     elif stage != "a1" and not parent:
         raise ValueError(f"{stage} requires --init-from or completed previous stage")
     if world > 1 and stage == "a1":
+        hybrid_prefixes = tuple(f'patch_blocks.{i}.attn.' for i, block in enumerate(net.patch_blocks)
+                                if isinstance(block.attn, JointVDN))
         for name, p in net.named_parameters():
-            if ".attn." in name and ".orig." not in name:
+            if name.startswith(hybrid_prefixes) and ".orig." not in name:
                 dist.broadcast(p.data, src=0)
     model = (
         DDP(net, device_ids=[device.index], broadcast_buffers=False, gradient_as_bucket_view=True)
@@ -326,7 +328,9 @@ def run_stage(config, stage, rank, world, device, parent=None):
         swanlab.init(
             project="PixelDiT-QDM-Halo2" if config.backbone == "pixeldit_t2i" else "PiD-VDN",
             experiment_name=(stage if config.memory_mode == "vda" else f"{stage}-{config.memory_mode}")
-                            + ("-rope" if config.remote_rope else ""),
+                            + ("-rope" if config.remote_rope else "")
+                            + ("-full-" + config.full_attention_layers.replace(',', '-')
+                               if config.full_attention_layers else ""),
             config={**config.to_dict(), **settings},
             mode="online" if config.swanlab_mode == "cloud" else config.swanlab_mode,
             log_dir=str(stage_dir / "swanlog"),
@@ -341,6 +345,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
                     "stage": stage,
                     "memory_mode": config.memory_mode,
                     "remote_rope": config.remote_rope,
+                    "full_attention_layers": net.full_attention_layers,
                     "batch": settings,
                     "trainable_parameters": sum(p.numel() for p in net.parameters() if p.requires_grad),
                     "frozen_parameters": sum(p.numel() for p in net.parameters() if not p.requires_grad),
@@ -370,8 +375,11 @@ def run_stage(config, stage, rank, world, device, parent=None):
     )
     callbacks = []
     if stage == "a1":
-        for block in net.patch_blocks:
+        for index, block in enumerate(net.patch_blocks):
+            if not isinstance(block.attn, JointVDN):
+                continue
             callback = AlignCallback(scale=1 / settings["accum"])
+            callback.layer_index = index
             block.attn.alignment_callback = callback
             callbacks.append(callback)
 
@@ -483,7 +491,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
                 if stage == "a1":
                     synchronize_a1(net)
                 if stage == "a1":
-                    norms = [torch.nn.utils.clip_grad_norm_(block.attn.parameters(), 0.1) for block in net.patch_blocks]
+                    norms = [torch.nn.utils.clip_grad_norm_(block.attn.parameters(), 0.1)
+                             for block in net.patch_blocks if isinstance(block.attn, JointVDN)]
                     norm = torch.stack(norms).max()
                 else:
                     norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -526,7 +535,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
                 }
                 for g in optimizer.param_groups:
                     metrics["lr/" + g["group_name"]] = g["lr"]
-                for i, callback in enumerate(callbacks):
+                for callback in callbacks:
+                    i = callback.layer_index
                     vm = torch.tensor(list(callback.metrics.values()), device=device)
                     if world > 1:
                         dist.all_reduce(vm)
@@ -564,7 +574,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
         return final_path or latest_state(stage_dir), completed
     finally:
         for block in net.patch_blocks:
-            block.attn.alignment_callback = None
+            if isinstance(block.attn, JointVDN):
+                block.attn.alignment_callback = None
         bar.close()
         if tracker:
             tracker.finish()
@@ -593,6 +604,7 @@ def parse_args(argv=None):
         "gallery_root",
         "output_root",
         "memory_mode",
+        "full_attention_layers",
         "local_mode",
         "stage",
         "preset",
@@ -636,6 +648,13 @@ def parse_args(argv=None):
     dry = args.pop("dry_run")
     args["activation_checkpointing"] = not args.pop("no_activation_checkpointing")
     config = VDNConfig(**args)
+    try:
+        retained = normalize_full_attention_layers(config.full_attention_layers)
+        if len(retained) == 14:
+            raise ValueError('Training requires at least one Hybrid Attention layer')
+        config.full_attention_layers = ','.join(map(str, retained))
+    except (TypeError, ValueError) as error:
+        parser.error(str(error))
     if config.backbone not in ("pid", "pixeldit_t2i"):
         parser.error("backbone must be pid or pixeldit_t2i")
     if config.resolution not in ("1024", "2048") or config.flow_shift <= 0 or config.shift_base_size < 1:

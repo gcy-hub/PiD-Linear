@@ -53,7 +53,7 @@ def configure_stage(net, stage, rank=64, alpha=64):
     for block in net.patch_blocks:
         m = block.attn
         if not isinstance(m, JointVDN):
-            raise ValueError("Expected PiD-VDN model")
+            continue
         m.linear_attention.requires_grad_(True)
         if isinstance(m.linear_attention, SpatialDeltaMemory):
             # Global bank solves have no decay/scan; exclude the retained unused module.
@@ -68,13 +68,13 @@ def configure_stage(net, stage, rank=64, alpha=64):
                     setattr(m.orig, name, old)
                 old.A.requires_grad_(True)
                 old.B.requires_grad_(True)
-    if stage == "b":
+    if stage == "b" and isinstance(net.patch_blocks[-1].attn, JointVDN):
         last = net.patch_blocks[-1].attn
         last.orig.qkv_y.A[0].requires_grad_(False)
         last.orig.qkv_y.B[0].requires_grad_(False)
         last.orig.proj_y.requires_grad_(False)
         last.softmax_gate_y.requires_grad_(False)
-    elif stage not in {"a1", "a2"}:
+    elif stage not in {"a1", "a2", "b"}:
         raise ValueError(stage)
     return net
 

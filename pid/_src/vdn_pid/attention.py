@@ -241,7 +241,7 @@ class JointVDN(nn.Module):
     def forward(self, x, y, pos_img, pos_txt=None, *, grid_size, text_valid_mask=None, attn_mask=None):
         if self.teacher_mode:
             output = self.orig(x, y, pos_img, pos_txt, attn_mask)
-            if self.alignment_callback is not None:
+            if self.alignment_callback is not None and not self.inference_mode:
                 self.alignment_callback(
                     self,
                     (x, y, pos_img, pos_txt),
@@ -255,10 +255,15 @@ class JointVDN(nn.Module):
 
 
 def convert_attention(net, region_size=8, local_mode="window", local_halo=0, local_shift=4, local_chunk=16,
-                      remote_rope=False):
+                      remote_rope=False, full_attention_layers=()):
+    from .config import normalize_full_attention_layers
+    retained = normalize_full_attention_layers(full_attention_layers, len(net.patch_blocks))
+    if any(isinstance(block.attn, JointVDN) for block in net.patch_blocks):
+        raise ValueError("Already converted; reconstruct checkpoint architecture instead")
+    net.full_attention_layers = retained
     for index,block in enumerate(net.patch_blocks):
-        if isinstance(block.attn, JointVDN):
-            raise ValueError("Already converted; reconstruct checkpoint architecture instead")
+        if index in retained:
+            continue
         block.attn = JointVDN(block.attn, region_size, region_chunk=local_chunk)
         block.attn.remote_rope = remote_rope
         block.attn.local_mode=local_mode

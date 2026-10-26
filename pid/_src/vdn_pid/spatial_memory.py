@@ -114,7 +114,9 @@ class SpatialDeltaMemory(nn.Module):
 def replace_memory(net, mode="fixed", banks=4):
     from .attention import JointVDN
 
-    for block in net.patch_blocks:
+    for index, block in enumerate(net.patch_blocks):
+        if index in getattr(net, 'full_attention_layers', []):
+            continue
         if not isinstance(block.attn, JointVDN):
             raise TypeError("Construct the VDN student before replacing its memory")
         old = block.attn.linear_attention
