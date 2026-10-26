@@ -6,6 +6,10 @@
 
 原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支。
 
+## DeCo-QDM
+
+DeCo 的 Local Softmax + Halo2 + QDM 改造位于 `deco/`，包含资源下载、BLIP3o 数据索引与文本缓存、A1/A2/B 三阶段训练、断点恢复和批量推理。使用独立的 `deco-qdm` 环境，完整命令见 [DeCo 使用说明](deco/README.md)。
+
 ## PixArt-Σ 数据生成与迁移
 
 八卡、每卡 batch 2 的生成脚本，以及模型下载、数据打包和跨服务器断点续生成命令，见 [PixArt 数据生成说明](grafting/tools/README-pixart.md)。
