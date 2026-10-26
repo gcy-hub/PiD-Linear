@@ -152,12 +152,13 @@ class JointVDN(nn.Module):
         self.local_mode = "window"
         self.local_halo = 0
         self.attention_batch_chunk = 0
+        self._cp_group = None
         self.window_offset = 0
         self.remote_rope = False
 
     def set_context_parallel_group(self, group):
-        if group is not None:
-            raise ValueError("PiD-VDN uses data parallelism; region sharding is not implemented")
+        self._cp_group = group
+        self.orig.set_context_parallel_group(group)
 
     def raw_qkv(self, x, y):
         b, n, c = x.shape
@@ -248,6 +249,9 @@ class JointVDN(nn.Module):
                                      text_valid_mask=text_valid_mask, attn_mask=attn_mask)
 
     def _student_forward(self, x, y, pos_img, pos_txt=None, *, grid_size, text_valid_mask=None, attn_mask=None):
+        if self._cp_group is not None:
+            from .context_parallel import student_forward
+            return student_forward(self, x, y, pos_img, pos_txt, grid_size, attn_mask)
         qkv, tqkv = self.raw_qkv(x, y)
         if self.remote_rope and pos_img is None:
             raise ValueError("Remote RoPE requires the original image position frequencies")

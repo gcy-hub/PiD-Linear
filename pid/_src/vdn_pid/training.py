@@ -12,6 +12,7 @@ import signal
 import time
 import uuid
 from pathlib import Path
+from functools import partial
 
 import numpy as np
 import torch
@@ -44,13 +45,15 @@ from .lora import configure_stage, optimizer_groups
 
 
 class AlignCallback:
-    def __init__(self, scale=1.0):
+    def __init__(self, scale=1.0, cp_group=None):
+        self.cp_group = cp_group
         self.scale = scale
         self.metrics = {}
         self.student_ms = 0.0
+        self.student_forward_ms = 0.0
 
     def __call__(self, module, args, kwargs, target):
-        timing = [torch.cuda.Event(enable_timing=True) for _ in range(2)] if args[0].is_cuda else None
+        timing = [torch.cuda.Event(enable_timing=True) for _ in range(3)] if args[0].is_cuda else None
         if timing:
             timing[0].record()
         args = tuple(a.detach() if isinstance(a, torch.Tensor) else a for a in args)
@@ -61,21 +64,30 @@ class AlignCallback:
             ),
         ):
             prediction = module.student_forward(*args, **kwargs)
+            if timing:
+                timing[1].record()
             tx, ty = [t.detach().float() for t in target]
             sx, sy = [s.float() for s in prediction]
             image_error = (sx - tx).square().sum()
             text_error = (sy - ty).square().sum()
-            denominator = (tx.square().sum() + ty.square().sum()).clamp_min(1e-30)
-            loss = (image_error + text_error) / denominator
+            cp_size = self.cp_group.size() if self.cp_group is not None else 1
+            denominator = tx.square().sum() + ty.square().sum() / cp_size
+            if self.cp_group is not None:
+                dist.all_reduce(denominator, group=self.cp_group)
+            denominator = denominator.clamp_min(1e-30)
+            # Image queries are sharded, text queries replicated. Global gradient
+            # averaging includes CP ranks, hence this cp_size compensation.
+            loss = (image_error + text_error / cp_size) / denominator * cp_size
             image_numel, text_numel = tx.numel(), ty.numel()
             del sx, sy, tx, ty
             if not torch.isfinite(loss):
                 raise FloatingPointError("Nonfinite A1 alignment")
             (loss * self.scale).backward()
             if timing:
-                timing[1].record()
-                timing[1].synchronize()
-                self.student_ms = timing[0].elapsed_time(timing[1])
+                timing[2].record()
+                timing[2].synchronize()
+                self.student_ms = timing[0].elapsed_time(timing[2])
+                self.student_forward_ms = timing[0].elapsed_time(timing[1])
             self.metrics = {
                 "relative_mse": loss.detach().item(),
                 "image_mse": image_error.detach().item() / image_numel,
@@ -84,6 +96,8 @@ class AlignCallback:
 
 
 def build_student(config, stage, device, load_base=True):
+    if torch.device(device).type == "cuda" and config.linalg_backend != "default":
+        torch.backends.cuda.preferred_linalg_library(config.linalg_backend)
     if config.backbone == "pixeldit_t2i":
         from pid._src.pixeldit_qdm.runtime import build_net as make_net
         from pid._src.pixeldit_qdm.runtime import load_net
@@ -187,12 +201,18 @@ def training_inputs(batch, conditioning, fm, noiser, device, seed=42, stage="a1"
 
 
 def run_stage(config, stage, rank, world, device, parent=None):
+    from .context_parallel import topology
+    cp_group, dp_rank, dp_world = topology(config.context_parallel_size)
     settings = config.stage_settings(stage, world)
     stage_dir = Path(config.output_root) / stage
     stage_dir.mkdir(parents=True, exist_ok=True)
     lock = lock_training_run(stage_dir, rank)
     subset = training_index(config, stage)
-    dataset = RawImageDataset(subset, resolution=config.resolution, text_cache_root=config.text_cache_root or None, allow_upscale=config.allow_upscale)
+    if config.resolution_policy == 'native':
+        from .native_data import NativeResolutionDataset
+        dataset = NativeResolutionDataset(subset, config.native_max_resolution, config.text_cache_root or None)
+    else:
+        dataset = RawImageDataset(subset, resolution=config.resolution, text_cache_root=config.text_cache_root or None, allow_upscale=config.allow_upscale)
     if dataset.metadata.get('synthetic') and not dataset.metadata.get('synthetic_complete'):
         raise ValueError('Synthetic image generation has not completed')
     checkpoint = latest_state(stage_dir) if config.resume == "auto" else None
@@ -223,6 +243,11 @@ def run_stage(config, stage, rank, world, device, parent=None):
         "local_attention": local_layout(config),
         "training_data": config.training_data,
         "training_resolution": config.resolution,
+        "resolution_policy": config.resolution_policy,
+        "native_max_resolution": config.native_max_resolution,
+        "context_parallel_size": config.context_parallel_size,
+        "data_parallel_size": dp_world,
+        "linalg_backend": config.linalg_backend,
         "training_index": str(subset.resolve()),
         "allow_upscale": config.allow_upscale,
         "subset_fingerprint": dataset.metadata["fingerprint"],
@@ -259,8 +284,12 @@ def run_stage(config, stage, rank, world, device, parent=None):
             config.allow_schedule_change,
             payload["scheduler"],
         )
+        metadata.update(context_parallel_size=config.context_parallel_size,
+                        data_parallel_size=dp_world, linalg_backend=config.linalg_backend)
     net = build_student(config, stage, device)
     net.base_sha256 = base_hash
+    if cp_group is not None:
+        net.enable_context_parallel(cp_group)
     progress = dict(
         stage_step=0, total_step=0, cursor=0, samples_seen=0, seen_rows=[], skipped_batches=0, validation_pending=False
     )
@@ -325,12 +354,19 @@ def run_stage(config, stage, rank, world, device, parent=None):
     gc.collect()
     seen = set(progress["seen_rows"])
     sampler_class = GlobalBatchSampler
-    if dataset.metadata.get('global_batch_plan'):
+    if config.resolution_policy == 'native':
+        from .native_data import NativeBatchSampler
+        sampler_class = partial(NativeBatchSampler, max_resolution=config.native_max_resolution)
+    elif dataset.metadata.get('global_batch_plan'):
         from pid._src.pixeldit_qdm.synthetic_data import PlannedBatchSampler
         sampler_class = PlannedBatchSampler
     sampler = sampler_class(
-        subset, settings["batch"], settings["accum"], rank, world, config.seed, progress["cursor"]
+        subset, settings["batch"], settings["accum"], dp_rank, dp_world, config.seed, progress["cursor"]
     )
+    if config.resolution_policy == 'native':
+        metadata['native_underfull_buckets'] = sampler.underfull_buckets
+        if rank == 0 and sampler.underfull_buckets:
+            print('Rare native buckets use replacement within a microbatch: ' + json.dumps(sampler.underfull_buckets), flush=True)
     loader = DataLoader(
         dataset,
         batch_sampler=sampler,
@@ -400,7 +436,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
         for index, block in enumerate(net.patch_blocks):
             if not isinstance(block.attn, JointVDN):
                 continue
-            callback = AlignCallback(scale=1 / settings["accum"])
+            callback = AlignCallback(scale=1 / settings["accum"], cp_group=cp_group)
             callback.layer_index = index
             block.attn.alignment_callback = callback
             callbacks.append(callback)
@@ -424,18 +460,24 @@ def run_stage(config, stage, rank, world, device, parent=None):
             from .evaluation import render_gallery
 
         completion = {}
-        with torch.random.fork_rng(devices=[device.index]):
-            render_gallery(
-                net,
-                config,
-                stage_dir / "galleries" / f"step_{progress['stage_step']:09d}",
-                rank,
-                world,
-                tracker,
-                progress["total_step"],
-                should_stop=stopping,
-                completion=completion,
-            )
+        if cp_group is not None:
+            net.disable_context_parallel()
+        try:
+            with torch.random.fork_rng(devices=[device.index]):
+                render_gallery(
+                    net,
+                    config,
+                    stage_dir / "galleries" / f"step_{progress['stage_step']:09d}",
+                    rank,
+                    world,
+                    tracker,
+                    progress["total_step"],
+                    should_stop=stopping,
+                    completion=completion,
+                )
+        finally:
+            if cp_group is not None:
+                net.enable_context_parallel(cp_group)
         # Exactly one collective after each rank finishes or pauses its own cases.
         progress["validation_pending"] = not consensus(completion["complete"], device)
         save(milestone=True)
@@ -454,7 +496,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
             optimizer.zero_grad(set_to_none=False)
             tick = time.monotonic()
             skipped = False
-            kd = fm_s = fm_t = teacher_ms = student_ms = 0.0
+            kd = fm_s = fm_t = teacher_ms = student_ms = student_forward_ms = 0.0
+            batch_shapes = []
             for micro in range(settings["accum"]):
                 batch = next(iterator)
                 if not consensus(not batch["errors"], device) or skipped:
@@ -467,6 +510,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
                     batch, conditioning, fm, noiser, device, config.seed, stage, progress["cursor"],
                     config.flow_shift, config.shift_base_size,
                 )
+                batch_shapes.append(list(batch["image"].shape[-2:]))
+                student_forward_end = torch.cuda.Event(enable_timing=True)
                 events = [torch.cuda.Event(enable_timing=True) for _ in range(4)]
                 events[0].record()
                 if stage == "a1":
@@ -493,6 +538,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
                     sync = model.no_sync() if world > 1 and micro < settings["accum"] - 1 else contextlib.nullcontext()
                     with sync, execution_mode(net), torch.autocast("cuda", dtype=torch.bfloat16, cache_enabled=False):
                         student = model(*args, **kwargs)
+                        student_forward_end.record()
                         loss = torch.nn.functional.mse_loss(student.float(), teacher.float())
                         if not consensus(torch.isfinite(loss).item(), device):
                             raise FloatingPointError("Nonfinite KD loss")
@@ -506,6 +552,8 @@ def run_stage(config, stage, rank, world, device, parent=None):
                 alignment_ms = sum(c.student_ms for c in callbacks) if stage == "a1" else 0.0
                 teacher_ms += events[0].elapsed_time(events[1]) - alignment_ms
                 student_ms += alignment_ms + events[2].elapsed_time(events[3])
+                student_forward_ms += (sum(c.student_forward_ms for c in callbacks) if stage == "a1"
+                                       else events[2].elapsed_time(student_forward_end))
                 del args, kwargs, fm_target, teacher, batch
             global_rows = sampler.global_batch(progress["cursor"])
             progress["cursor"] += 1
@@ -534,8 +582,9 @@ def run_stage(config, stage, rank, world, device, parent=None):
             torch.cuda.synchronize()
             elapsed = time.monotonic() - tick
             if progress["cursor"] % config.log_steps == 0:
-                values = torch.tensor([kd, fm_s, fm_t, teacher_ms, student_ms], device=device)
-                peaks = torch.tensor([elapsed, torch.cuda.max_memory_allocated(device) / 2**30], device=device)
+                values = torch.tensor([kd, fm_s, fm_t, teacher_ms, student_ms, student_forward_ms], device=device)
+                peaks = torch.tensor([elapsed, torch.cuda.max_memory_allocated(device) / 2**30,
+                                      torch.cuda.max_memory_reserved(device) / 2**30], device=device)
                 if world > 1:
                     dist.all_reduce(values)
                     values /= world
@@ -546,8 +595,11 @@ def run_stage(config, stage, rank, world, device, parent=None):
                     "train/fm_teacher": values[2].item(),
                     "efficiency/teacher_ms": values[3].item(),
                     "efficiency/student_forward_backward_ms": values[4].item(),
+                    "efficiency/student_forward_ms": values[5].item(),
+                    "efficiency/student_backward_loss_ms": (values[4] - values[5]).item(),
                     "efficiency/seconds_per_update": peaks[0].item(),
                     "efficiency/peak_memory_gib": peaks[1].item(),
+                    "efficiency/peak_reserved_memory_gib": peaks[2].item(),
                     "efficiency/images_per_second": settings["effective"] / peaks[0].item() if not skipped else 0.0,
                     "stage/step": progress["stage_step"],
                     "stage/unique_samples": len(seen),
@@ -566,7 +618,7 @@ def run_stage(config, stage, rank, world, device, parent=None):
                     metrics.update({f"alignment/layer_{i}/{k}": v for k, v in zip(callback.metrics, vm.tolist())})
                 if rank == 0:
                     with (stage_dir / "metrics.jsonl").open("a") as f:
-                        f.write(json.dumps({"step": progress["total_step"], **metrics}) + "\n")
+                        f.write(json.dumps({"step": progress["total_step"], **metrics, "microbatch_shapes": batch_shapes}) + "\n")
                     print(
                         f"{stage} step={progress['stage_step']} KD={values[0].item():.6f} {peaks[0].item():.2f}s/update peak={peaks[1].item():.2f}GiB",
                         flush=True,
@@ -635,6 +687,7 @@ def parse_args(argv=None):
         "swanlab_mode",
         "training_data",
         "validation_cases",
+        "resolution_policy", "linalg_backend",
     ):
         parser.add_argument("--" + name.replace("_", "-"), default=getattr(defaults, name))
     for name in (
@@ -662,6 +715,7 @@ def parse_args(argv=None):
         "pit_chunk_size",
         "validation_resolution",
         "attention_batch_chunk",
+        "context_parallel_size", "native_max_resolution",
     ):
         parser.add_argument("--" + name.replace("_", "-"), type=int, default=getattr(defaults, name))
     parser.add_argument("--flow-shift", type=float, default=defaults.flow_shift)
@@ -704,6 +758,17 @@ def parse_args(argv=None):
         parser.error("Invalid size/workers/threads/log interval")
     if config.max_steps < 0 or config.save_steps < 0 or config.validation_steps < -1 or config.lora_rank < 1:
         parser.error("Invalid steps/LoRA")
+    if config.context_parallel_size not in (1, 2):
+        parser.error('context-parallel-size must be 1 or 2')
+    if config.context_parallel_size > 1 and (config.memory_mode != 'fixed4' or config.local_mode != 'halo'
+                                           or config.remote_rope or config.backbone != 'pid'):
+        parser.error('CP=2 currently supports PiD fixed4 + Halo with NoPE remote memory')
+    if config.resolution_policy not in ('fixed', 'native') or config.linalg_backend not in ('default', 'cusolver', 'magma'):
+        parser.error('Invalid resolution-policy or linalg-backend')
+    if config.native_max_resolution not in (3072, 3840, 4096):
+        parser.error('native-max-resolution must be 3072, 3840 or 4096')
+    if config.resolution_policy == 'native' and config.allow_upscale:
+        parser.error('Native resolution policy never upsamples')
     return config, dry
 
 
@@ -711,6 +776,8 @@ def main(argv=None):
     config, dry = parse_args(argv)
     stages = list(STAGES) if config.stage == "all" else [config.stage]
     world = int(os.getenv("WORLD_SIZE", 1))
+    for stage in stages:
+        config.stage_settings(stage, world)
     if dry:
         print(
             json.dumps(

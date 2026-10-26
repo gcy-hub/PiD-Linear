@@ -125,6 +125,10 @@ class VDNConfig:
     validation_resolution: int = 2048
     validation_cases: str = ""
     attention_batch_chunk: int = 0
+    context_parallel_size: int = 1
+    resolution_policy: str = "fixed"
+    native_max_resolution: int = 3840
+    linalg_backend: str = "default"
 
     def to_dict(self):
         return asdict(self)
@@ -139,6 +143,9 @@ class VDNConfig:
         return str(Path(self.weights_root) / BASE_RELATIVE)
 
     def stage_settings(self, stage, world):
+        if self.context_parallel_size < 1 or world % self.context_parallel_size:
+            raise ValueError("GPU world size must be divisible by context_parallel_size")
+        world = world // self.context_parallel_size
         p = STAGES[stage].copy()
         if self.backbone == "pixeldit_t2i":
             p["steps"] = getattr(self, stage+"_steps")
@@ -210,7 +217,8 @@ def training_index(config, stage):
 
 
 def verify_training_layout(config, saved_config):
-    defaults = dict(training_data="subsets", resolution=2048, allow_upscale=False)
+    defaults = dict(training_data="subsets", resolution=2048, allow_upscale=False,
+                    resolution_policy="fixed", native_max_resolution=3840)
     if any(str(getattr(config, key)) != str(saved_config.get(key, default)) for key, default in defaults.items()):
         raise ValueError("Checkpoint training layout differs; use a new experiment directory")
 

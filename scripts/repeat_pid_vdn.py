@@ -146,6 +146,7 @@ def training_command(root, stage, request):
             "backbone", "teacher_checkpoint",
             "a1_batch_size", "a2_batch_size", "b_batch_size", "a1_steps", "a2_steps", "b_steps",
             "resolution", "flow_shift", "shift_base_size",
+            "resolution_policy", "native_max_resolution", "context_parallel_size", "linalg_backend",
             "index_root",
             "text_cache_root",
             "subset_root",

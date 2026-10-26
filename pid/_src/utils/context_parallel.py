@@ -96,7 +96,9 @@ def cat_outputs_cp_with_grad(x: Tensor, seq_dim: int, cp_group: ProcessGroup) ->
     This function gathers tensors from all ranks in the checkpoint parallelism group
     and concatenates them along the specified sequence dimension.
 
-    It retains computational graph locally for each rank by replacing the portion of the tensor with original output.
+    During training the all-gather has a reduce-scatter backward, so queries on
+    other ranks contribute to local K/V and preceding layer gradients.
+    No-grad teacher and inference gathers do not retain an autograd graph.
 
     Args:
         x: Input tensor to be concatenated.
@@ -109,6 +111,11 @@ def cat_outputs_cp_with_grad(x: Tensor, seq_dim: int, cp_group: ProcessGroup) ->
     Raises:
         RuntimeError: If the gather operation fails.
     """
+    # Student CP needs remote-query gradients, not only a local graph splice.
+    # No-grad teacher/inference retains the native inexpensive all-gather.
+    if torch.is_grad_enabled() and x.requires_grad:
+        from torch.distributed.nn.functional import all_gather as gather_with_backward
+        return torch.cat(gather_with_backward(x.contiguous(), group=cp_group), dim=seq_dim)
     # Get the world size (number of processes in the group)
     cp_size = cp_group.size()
     assert cp_size > 0, "cp_size should be greater than 0"
