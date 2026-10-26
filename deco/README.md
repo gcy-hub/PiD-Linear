@@ -70,6 +70,25 @@ bash deco/scripts/train_deco_qdm.sh \
 
 输出为 `outputs/deco-qdm/{a1,a2,b}`；checkpoint仅保存新增参数及训练状态，推理还需原始DeCo权重。完成标记发布后才视为可恢复，未完成目录会被忽略。最近3个恢复状态、验证节点及阶段最终权重保留。
 
+### 选择性保留 Full Attention
+
+`--full-attention-layers 1,2,3,4` 按**从0开始**的图像层索引保留这四层原始 Attention，
+其余12层继续替换为 Local Softmax + Halo2 + QDM。保留层在三个阶段都冻结，B阶段也不添加LoRA。
+省略该参数仍替换全部16层。布局写入checkpoint，阶段衔接和续训严格检查，独立推理自动恢复。
+
+以下入口从原始DeCo开始新实验，四卡、每卡bs32、累积1；
+A1/A2/B分别500/1000/10000步，各阶段每500步保存并生成10张验证图：
+
+```bash
+conda activate deco-qdm
+GPU_IDS=0,1,2,3 CPU_THREADS=1 \
+DECO_QDM_PARTIAL_RUN=outputs/deco-qdm-full-1-2-3-4-node01-bs32 \
+bash deco/scripts/train_deco_qdm_partial_full_node01.sh
+```
+
+入口默认后台每20分钟保存并更新训练和控制器进程，依次完成三个阶段；重复同一命令从该实验目录恢复。
+可以用 `--workers` 等参数覆盖入口默认值。新实验请使用新输出目录，不加载先前学生checkpoint。
+
 SwanLab默认离线：每阶段目录的 `swanlog/` 下记录误差、KD/FM、学习率、梯度、实际样本数、吞吐、显存及生成图。可用 `--swanlab-mode online`。固定验证使用25步、CFG4、shift3、AdamLM order2；结果放在各阶段 `validation/`，包含原图、左右拼图和中心同坐标裁剪。原始参考图只生成一次，已完成验证图片可续用。
 
 ### node01 可选后台自动续训
@@ -108,6 +127,53 @@ bash deco/scripts/sample_deco_qdm.sh \
 
 省略 `--checkpoint` 使用原始DeCo；`--compare`另外生成同输入的原始参考、左右拼图及同坐标裁剪。文本编码器仅在编码prompt时加载，编码完成释放后再加载DiT。学生结构从checkpoint恢复，默认512；推理可指定16倍数的高宽。耗时统计仅包含DiT采样，模型加载、文本编码与PNG保存单独处理。
 
+## 5. 多卡批量文生图与断点续生成
+
+准备一个 JSON prompt 列表，每条包含 `id`、`category`、`prompt`、`seed`。
+`id` 唯一，`id/category` 使用英文字母、数字、下划线或短横线，例如：
+
+```json
+[{"id":"people_01","category":"people","prompt":"A portrait photograph of a violinist.","seed":42}]
+```
+
+```bash
+conda activate deco-qdm
+GPU_IDS=0,1,2,3 CPU_THREADS=1 \
+bash deco/scripts/sample_deco_qdm_batch.sh \
+  --weights-root "$DECO_WEIGHTS" \
+  --checkpoint outputs/deco-qdm/b/checkpoints/SELECTED_CHECKPOINT \
+  --prompts prompts.json --output-root outputs/deco-qdm/prompt-gallery \
+  --height 512 --width 512 --steps 25 --cfg 4 --shift 3 \
+  --threads 1 --text-batch-size 8 --cycle-seconds 1200
+
+# 查看实时完成数量，或请求在当前图片生成完毕后停止
+bash deco/scripts/sample_deco_qdm_batch.sh --output-root outputs/deco-qdm/prompt-gallery --status
+bash deco/scripts/sample_deco_qdm_batch.sh --output-root outputs/deco-qdm/prompt-gallery --stop
+tail -f outputs/deco-qdm/prompt-gallery/repeat/latest-training.log
+```
+
+入口会后台启动，每张卡独立加载同一个学生模型，按 prompt 分配任务；图片保存在
+`generation/validation/<category>/`。每张图附带 prompt、seed、采样设置、耗时和完成标记。
+直接编码给定 prompt，不读取训练图片或图像条件。文本编码器使用后释放，再加载 DiT，
+不进行 CPU offload。文本结果缓存仅属于本次生成任务。
+
+重复同一条启动命令会跳过完整图片；损坏或缺少完成标记的图片重新生成。
+同一目录拒绝混用不同权重、prompt 或采样参数。模型 checkpoint 标记为保留。
+默认每20分钟在图片边界结束本轮，重新创建生成进程和控制器；完成全部图片后退出。
+手动停止、OOM、CUDA异常或连续无进展会停止重试，原因保留在 `repeat/` 日志中。
+
 ## 实现来源
 
 最小官方DeCo模块位于 `deco/deco_qdm/vendor/`，来源commit记录在其 `PROVENANCE.md`；原目录保持原样。QDM与Halo的计算沿用本项目PiD实验，并针对DeCo的图像query＋图文K/V接口适配。代码不依赖其他PiD工作树。
+
+### 双节点八卡训练
+
+各阶段独立设置保存、验证的 step 周期；验证仅使用学生生成固定 10 张图像。以下配置每卡 batch 32、累积 2，有效 batch 512：
+
+```bash
+conda activate deco-qdm
+mkdir -p outputs/deco-qdm/slurm
+sbatch deco/scripts/train_deco_qdm_8gpu.slurm
+```
+
+脚本依次运行 A1（1000 步，每 500 步保存验证）、A2（2000 步，每 1000 步保存验证）、B（20000 步，每 2000 步保存验证），默认输出 `outputs/deco-qdm`，`--resume auto` 从同阶段最新完整 checkpoint 恢复。可通过 `DECO_RUN` 覆盖输出目录。

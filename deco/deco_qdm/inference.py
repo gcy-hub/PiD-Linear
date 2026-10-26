@@ -80,7 +80,11 @@ def _pair(left,right,destination,crop=False):
 
 def _model_settings(model):
     modules=list(model.hybrid_modules())
-    return dict(region_size=modules[0][1].region_size,halo=modules[0][1].halo)
+    result=dict(region_size=modules[0][1].region_size if modules else model.region_size,
+                halo=modules[0][1].halo if modules else model.halo)
+    if getattr(model,'full_attention_layers',[]):
+        result['full_attention_layers']=model.full_attention_layers
+    return result
 
 
 def _image_run(model,noise,condition,empty,destination,settings,teacher=False):
@@ -138,11 +142,14 @@ def validate_checkpoint(*,model,stage,step,config,output_dir):
             noise=torch.randn((1,3,settings['height'],settings['width']),generator=torch.Generator().manual_seed(prompt['seed'])).to(device)
             common=dict(settings,prompt=prompt['prompt'],seed=prompt['seed'],weights_root=str(config['weights_root']),base_fingerprint=getattr(model,'base_fingerprint',config.get('base_fingerprint')),text_fingerprint=text_fingerprint)
             original=reference/(prompt['id']+'.png');student=output_dir/(prompt['id']+'.png')
-            teacher_settings={k:v for k,v in common.items() if k not in ('region_size','halo')}
-            a=_image_run(model,noise,text,empty,original,teacher_settings,teacher=True)
+            teacher_settings={k:v for k,v in common.items() if k not in ('region_size','halo','full_attention_layers')}
+            a=None
+            if not config.get('validation_student_only',False):
+                a=_image_run(model,noise,text,empty,original,teacher_settings,teacher=True)
             b=_image_run(model,noise,text,empty,student,dict(common,stage=stage,step=step))
-            _pair(original,student,output_dir/(prompt['id']+'_comparison.png'))
-            _pair(original,student,output_dir/(prompt['id']+'_crop.png'),crop=True)
+            if not config.get('validation_student_only',False):
+                _pair(original,student,output_dir/(prompt['id']+'_comparison.png'))
+                _pair(original,student,output_dir/(prompt['id']+'_crop.png'),crop=True)
             records.append(dict(id=prompt['id'],teacher=a,student=b))
         _atomic_json(output_dir/f'rank_{rank:03d}.json',dict(stage=stage,step=step,images=records))
     finally:model.train(was_training)
@@ -159,10 +166,11 @@ def main():
     parser.add_argument('--cfg',type=float,default=4.);parser.add_argument('--shift',type=float,default=3.)
     parser.add_argument('--order',type=int,default=2);parser.add_argument('--region-size',type=int,default=None)
     parser.add_argument('--halo',type=int,default=None);parser.add_argument('--output',default='outputs/deco-qdm/inference/image.png')
+    parser.add_argument('--full-attention-layers',default=None,help='Optional zero-based retained layer list; checkpoint layout is authoritative')
     parser.add_argument('--compare',action='store_true');parser.add_argument('--threads',type=int,default=1)
     args=parser.parse_args();torch.set_num_threads(args.threads)
     if min(args.height,args.width)<16 or args.height%16 or args.width%16:parser.error('height and width must be positive multiples of 16')
-    from .model import build_model,load_delta_state_dict
+    from .model import build_model,load_delta_state_dict,normalize_full_attention_layers
     from .cache_text import TextEncoder
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Encode first in a separate model lifetime; no residency/offload during DiT sampling.
@@ -177,6 +185,10 @@ def main():
         stage=state['stage']
         architecture=state['metadata']['architecture']
         if architecture.get('tiny'):raise ValueError('Tiny test checkpoints are not native DeCo inference weights')
+        retained=architecture.get('full_attention_layers',[])
+        if args.full_attention_layers is not None and normalize_full_attention_layers(args.full_attention_layers)!=retained:
+            raise ValueError('Requested Full Attention layers differ from the checkpoint')
+        args.full_attention_layers=retained
         for key in ['region_size','halo']:
             explicit=getattr(args,key)
             if explicit is not None and explicit!=architecture[key]:
@@ -188,12 +200,14 @@ def main():
     base_fingerprint=fingerprint_file(Path(args.weights_root)/'t2i_DeCo.ckpt')
     if state and state['metadata']['base_fingerprint']!=base_fingerprint:
         raise ValueError('Inference base weights differ from the checkpoint teacher')
-    model=build_model(args.weights_root,stage=stage,region_size=args.region_size,halo=args.halo,device=device)
+    model=build_model(args.weights_root,stage=stage,region_size=args.region_size,halo=args.halo,device=device,
+                      full_attention_layers=args.full_attention_layers)
     model.base_fingerprint=base_fingerprint
     if state:load_delta_state_dict(model,state['delta'])
     model.eval();condition,empty=texts[0:1].to(device),texts[1:2].to(device)
     noise=torch.randn((1,3,args.height,args.width),generator=torch.Generator().manual_seed(args.seed)).to(device)
     settings={k:getattr(args,k) for k in ['prompt','negative_prompt','height','width','seed','steps','cfg','shift','order','region_size','halo']}
+    if model.full_attention_layers:settings['full_attention_layers']=model.full_attention_layers
     settings['checkpoint']=str(Path(args.checkpoint).resolve()) if args.checkpoint else None
     settings['base_fingerprint']=base_fingerprint
     settings['text_fingerprint']=hashlib.sha256(texts.contiguous().view(torch.uint8).cpu().numpy().tobytes()).hexdigest()

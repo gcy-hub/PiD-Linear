@@ -310,6 +310,10 @@ def validate(model, args, stage, step, stage_dir, device, rank, stop=None):
         dist.barrier()
     result = result or {}
     result["validation/complete"] = consensus(result.get("validation/complete", True), device)
+    if distributed():
+        count = torch.tensor(result.get("validation/images", 0), device=device, dtype=torch.long)
+        dist.all_reduce(count)
+        result["validation/images"] = int(count.item())
     return result
 
 
@@ -326,6 +330,11 @@ def _lock_stage(stage_dir, rank):
     if error:
         raise RuntimeError(error)
     return lock
+
+
+def validation_due(args, stage, step, total):
+    interval = getattr(args, f"{stage}_validate_every")
+    return step == total or (interval > 0 and step % interval == 0)
 
 
 def run_stage(args, stage, rank, world, device, stop, parent=None):
@@ -354,7 +363,8 @@ def run_stage(args, stage, rank, world, device, stop, parent=None):
                                  allow_partial_data=args.allow_partial_data)
     sampler = GlobalBatchSampler(len(dataset), args.batch_size, rank, world, args.seed)
     model = build_model(args.weights_root, stage=stage, region_size=args.region_size, halo=args.halo,
-                        device=device, checkpointing=args.activation_checkpointing, tiny=args.tiny)
+                        device=device, checkpointing=args.activation_checkpointing, tiny=args.tiny,
+                        full_attention_layers=args.full_attention_layers)
     model.train()
     for name, module in model.hybrid_modules():
         module._deco_training_name = name
@@ -369,6 +379,9 @@ def run_stage(args, stage, rank, world, device, stop, parent=None):
                                   minimum_lr=args.minimum_lr),
                     parent_checkpoint=str(parent) if parent else args.init_from or None,
                     swanlab_run_id=broadcast(uuid.uuid4().hex if rank == 0 else None))
+    # Preserve the historical metadata shape for all-Hybrid checkpoints/jobs.
+    if model.full_attention_layers:
+        metadata['architecture']['full_attention_layers'] = model.full_attention_layers
     model.base_fingerprint = metadata["base_fingerprint"]
     progress = dict(stage_step=0, cumulative_step=0, cursor=0, skipped_batches=0, validations=[])
     if payload:
@@ -382,7 +395,11 @@ def run_stage(args, stage, rank, world, device, stop, parent=None):
             if not args.allow_batch_change:
                 raise ValueError("Resume batch/world/accumulation differs; use --allow-batch-change explicitly")
         if payload["metadata"]["schedule"] != metadata["schedule"]:
-            raise ValueError("Resume schedule differs; continue with the saved stage steps and LR settings")
+            if not args.allow_schedule_change:
+                raise ValueError("Resume schedule differs; use --allow-schedule-change explicitly")
+            if total < payload["progress"]["stage_step"]:
+                raise ValueError("New total precedes the saved optimizer step")
+            metadata["previous_schedule"] = payload["metadata"]["schedule"]
         metadata["swanlab_run_id"] = payload["metadata"]["swanlab_run_id"]
         metadata["parent_checkpoint"] = payload["metadata"].get("parent_checkpoint")
         load_delta_state_dict(model, payload["delta"])
@@ -417,6 +434,11 @@ def run_stage(args, stage, rank, world, device, stop, parent=None):
     if payload:
         optimizer.load_state_dict(payload["optimizer"])
         scheduler.load_state_dict(payload["scheduler"])
+        if "previous_schedule" in metadata:
+            factor = lr_factor(scheduler.last_epoch, total, warmup, args.minimum_lr / args.learning_rate)
+            scheduler._last_lr = [base * factor for base in scheduler.base_lrs]
+            for group, lr in zip(optimizer.param_groups, scheduler._last_lr):
+                group["lr"] = lr
         old_world = payload["world_size"]
         if world != old_world and not args.allow_batch_change:
             raise ValueError("Rank-specific RNG resume requires unchanged world size")
@@ -466,15 +488,14 @@ def run_stage(args, stage, rank, world, device, stop, parent=None):
         numeric = {(key if key.startswith("validation/") else f"validation/{key}"): value for key, value in result.items()
                    if isinstance(value, (int, float)) and math.isfinite(value)}
         tracker.log(numeric, progress["cumulative_step"])
-        examples = sorted((stage_dir / "validation" / f"step-{step:09d}").glob("*_comparison.png"))[:2]
+        examples = sorted((stage_dir / "validation" / f"step-{step:09d}").glob("*.png" if args.validation_student_only else "*_comparison.png"))[:2]
         tracker.log_images(examples, progress["cumulative_step"])
         return True
 
     try:
         # A final update checkpoint can precede a killed validation. Retry it
         # before finishing, even when there are no optimizer steps remaining.
-        if progress["stage_step"] > 0 and (progress["stage_step"] == total or
-                                           (stage == "b" and progress["stage_step"] % 2000 == 0) or
+        if progress["stage_step"] > 0 and (validation_due(args, stage, progress["stage_step"], total) or
                                            progress.get("pending_validation") is not None):
             if not run_validation():
                 return False, last_checkpoint
@@ -570,11 +591,11 @@ def run_stage(args, stage, rank, world, device, stop, parent=None):
                 if rank == 0:
                     bar.set_postfix(loss=f"{values.get('loss/kd', values.get('loss/alignment', 0)):.4g}")
             values = {}
-            should_validate = progress["stage_step"] == total or (stage == "b" and progress["stage_step"] % 2000 == 0)
+            should_validate = validation_due(args, stage, progress["stage_step"], total)
             if should_validate:
                 if not run_validation():
                     return False, last_checkpoint
-            elif progress["stage_step"] % SAVE_EVERY[stage] == 0:
+            elif getattr(args, f"{stage}_save_every") > 0 and progress["stage_step"] % getattr(args, f"{stage}_save_every") == 0:
                 last_checkpoint = snapshot()
             should_stop = (stop["requested"] or (stage_dir / "STOP").exists() or
                            (Path(args.output_root) / "repeat/STOP").exists() or
@@ -622,14 +643,19 @@ def parser():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--region-size", type=int, default=8)
     p.add_argument("--halo", type=int, default=2)
+    p.add_argument("--full-attention-layers", default="", help="Comma-separated zero-based native image Attention layers to retain frozen; default replaces all")
     for stage in STAGES:
         p.add_argument(f"--{stage}-steps", type=int, default=STAGE_STEPS[stage])
+        p.add_argument(f"--{stage}-save-every", type=int, default=SAVE_EVERY[stage])
+        p.add_argument(f"--{stage}-validate-every", type=int, default=2000 if stage == "b" else 0)
+    p.add_argument("--validation-student-only", action="store_true", help="Generate the ten fixed student images without teacher comparisons")
     p.add_argument("--learning-rate", type=float, default=1e-4)
     p.add_argument("--minimum-lr", type=float, default=5e-6)
     p.add_argument("--max-seconds", type=float, default=0, help="save/exit at the next update boundary; 0 means unlimited")
     p.add_argument("--log-every", type=int, default=1)
     p.add_argument("--max-invalid-batches", type=int, default=1000)
     p.add_argument("--allow-batch-change", action="store_true")
+    p.add_argument("--allow-schedule-change", action="store_true")
     p.add_argument("--allow-partial-data", action="store_true")
     p.add_argument("--activation-checkpointing", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--swanlab-mode", choices=("offline", "online", "cloud", "disabled"), default="offline")
@@ -651,6 +677,8 @@ def main(argv=None):
         raise ValueError("This baseline requires local halo=2")
     if not 0 < args.minimum_lr <= args.learning_rate:
         raise ValueError("Expected 0 < minimum-lr <= learning-rate")
+    if any(getattr(args, f"{stage}_{kind}_every") < 0 for stage in STAGES for kind in ("save", "validate")):
+        raise ValueError("Save and validation intervals must be nonnegative")
     args.started_at = time.monotonic()
     torch.set_num_threads(args.threads)
     rank, world, device = init_distributed()

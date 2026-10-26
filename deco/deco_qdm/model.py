@@ -44,7 +44,11 @@ def joint_memory(q, k, v, beta, grid):
             a = kk.transpose(-1, -2) @ weighted_k
             bb = vv.transpose(-1, -2) @ weighted_k
             chol = torch.linalg.cholesky(eye + a)
-            state = torch.cholesky_solve(bb.transpose(-1, -2), chol).transpose(-1, -2)
+            # Solve L z = B^T, then L^T state^T = z. This is the same SPD
+            # system as cholesky_solve, but avoids its batched MAGMA potrs path,
+            # which raised a CUDA assertion during the real A1 backward run.
+            rhs = torch.linalg.solve_triangular(chol, bb.transpose(-1, -2), upper=False)
+            state = torch.linalg.solve_triangular(chol.transpose(-1, -2), rhs, upper=True).transpose(-1, -2)
             value = torch.einsum('bhvk,bnhk->bnhv', state, q[:, indices])
             out = out.index_copy(1, indices, value)
         return out
@@ -227,6 +231,10 @@ class DeCoQDM(PixNerDiT):
 
     def _run_block(self, block, s, y, condition, pos, grid, teacher, callback):
         m = block.attn
+        if not isinstance(m, HybridAttention):
+            # Native retained layers use their original path in both modes.
+            # Keep autograd enabled for student gradients through frozen layers.
+            return block(s, y, condition, pos)
         previous = m.teacher, m.alignment_callback, m.grid
         m.teacher, m.alignment_callback, m.grid = teacher, callback, grid
         try:
@@ -350,7 +358,20 @@ def load_delta_state_dict(model, state, strict=True):
     return model
 
 
-def build_model(weights_root, stage='a1', region_size=8, halo=2, device='cpu', checkpointing=False, tiny=False):
+def normalize_full_attention_layers(value, count=16):
+    if value is None or value == '':
+        return []
+    if isinstance(value, str):
+        value = [int(part.strip()) for part in value.split(',')]
+    layers = list(value)
+    if (any(not isinstance(i, int) or isinstance(i, bool) or not 0 <= i < count for i in layers)
+            or len(layers) != len(set(layers))):
+        raise ValueError(f'Full Attention indices must be unique integers in [0, {count-1}]')
+    return sorted(layers)
+
+
+def build_model(weights_root, stage='a1', region_size=8, halo=2, device='cpu', checkpointing=False, tiny=False,
+                full_attention_layers=None):
     kwargs = dict(in_channels=3, patch_size=16, num_groups=24, hidden_size=1536,
                   txt_embed_dim=2048, txt_max_length=128, num_text_blocks=4,
                   decoder_hidden_size=32, num_encoder_blocks=16, num_decoder_blocks=3)
@@ -358,6 +379,7 @@ def build_model(weights_root, stage='a1', region_size=8, halo=2, device='cpu', c
         kwargs.update(patch_size=2, num_groups=2, hidden_size=32, txt_embed_dim=16,
                       txt_max_length=8, num_text_blocks=1, decoder_hidden_size=8,
                       num_encoder_blocks=2, num_decoder_blocks=1)
+    retained = normalize_full_attention_layers(full_attention_layers, kwargs['num_encoder_blocks'])
     # Construct the original backbone in BF16 directly: native initialization should
     # not transiently allocate a second FP32 copy of the multi-billion-param model.
     old_dtype = torch.get_default_dtype()
@@ -378,8 +400,11 @@ def build_model(weights_root, stage='a1', region_size=8, halo=2, device='cpu', c
         model.load_state_dict(official, strict=True)
         del payload, state, official
     model.requires_grad_(False)
-    for block in model.blocks:
-        block.attn = HybridAttention(block.attn, region_size=region_size, halo=halo)
+    model.full_attention_layers = retained
+    model.region_size, model.halo = region_size, halo
+    for index, block in enumerate(model.blocks):
+        if index not in retained:
+            block.attn = HybridAttention(block.attn, region_size=region_size, halo=halo)
     model.to(device=device)
     configure_stage(model, stage)
     return model
