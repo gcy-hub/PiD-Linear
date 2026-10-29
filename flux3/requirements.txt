@@ -1,0 +1,16 @@
+# Install torch==2.10.0 and torchvision==0.25.0 from the cu128 index first.
+transformers==4.57.1
+accelerate==1.15.0
+swanlab==0.10.1
+peft==0.17.1
+modelscope==1.40.2
+huggingface_hub>=0.34,<1
+safetensors>=0.5
+numpy>=1.26,<3
+Pillow>=10
+requests>=2.31
+tqdm>=4.66
+einops>=0.8
+imageio[ffmpeg]>=2.34
+ftfy>=6.3
+pandas>=2.2
