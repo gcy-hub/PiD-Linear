@@ -578,3 +578,32 @@ accumulation1, 500 steps, and saving/student-only validation every100steps. On
 three GPUs the effective batch is6. Automatic20-minute checkpoint continuation
 uses `outputs/flux3-memory-text-lowmse9-direct-b-node01/b`, overridden by
 `FLUX3_LOW9_TEXT_MEMORY_RUN`.
+
+## 服务器重启后自动恢复
+
+已有`plan.json`的14组串行实验和8卡四队列/联合训练都支持此监控。需要服务器提供用户`crontab`及运行中的cron服务，不需要sudo或用户systemd。先启动一次对应训练入口，再安装：
+
+```bash
+conda activate flux3-qdm
+bash flux3/scripts/watch_flux3_resume.sh --install \
+  --output-root outputs/flux3-pairs-parallel-then-joint --min-free-mib 32768
+```
+
+串行14组实验则将输出目录改为`outputs/flux3-pairwise-hybrid-50`。安装会保留其他cron任务，新增开机检查和每分钟检查；读取已有计划中的GPU、数据路径及训练参数，不重新猜测配置。只在安装时的主机恢复该目录。
+
+驱动或显存尚未就绪时继续等待；已有控制器、训练或验证进程时不重复启动。手动`--stop`、失败状态或全部完成不会被自动拉起。恢复从同一目录的完整checkpoint及已保存验证进度继续。监控本身不加载模型，不占GPU显存。
+
+```bash
+conda activate flux3-qdm
+bash flux3/scripts/watch_flux3_resume.sh --status \
+  --output-root outputs/flux3-pairs-parallel-then-joint
+
+# 查看监控日志。
+tail -f outputs/flux3-pairs-parallel-then-joint/repeat/reboot-watch/watch.log
+
+# 只移除重启恢复监控，不停止正在运行的训练。
+bash flux3/scripts/watch_flux3_resume.sh --remove \
+  --output-root outputs/flux3-pairs-parallel-then-joint
+```
+
+连续三次启动异常后监控暂停尝试并记录原因；排查后重新安装监控可重新启用。实际重启恢复取决于开机后cron、代码/数据所在文件系统及GPU驱动恢复可用。

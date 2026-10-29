@@ -117,3 +117,15 @@ outputs/flux3-pairs-parallel-then-joint/
 ```
 
 验证仍为50步、CFG3.5、alpha6.93，生成10张学生2K图片。图片在各阶段`galleries/step_<step>/student/2048/`中逐张保存、恢复，SwanLab默认离线记录。
+
+## 开机后自动续训
+
+启动过一次上述流程后，在同一台服务器安装用户cron监控：
+
+```bash
+conda activate flux3-qdm
+bash flux3/scripts/watch_flux3_resume.sh --install \
+  --output-root outputs/flux3-pairs-parallel-then-joint --min-free-mib 32768
+```
+
+监控在开机时及每分钟检查同一输出目录，资源就绪后恢复四个队列或联合训练，保留已有完整checkpoint和验证图片。不会重复启动已有进程，手动停止后不会拉起。状态、移除命令见[重启恢复说明](../README.md#服务器重启后自动恢复)。
