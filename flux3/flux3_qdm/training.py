@@ -42,6 +42,7 @@ def parse_args(argv=None):
     p.add_argument('--output-root',default='outputs/flux3-qdm')
     p.add_argument('--resume',default='auto')
     p.add_argument('--init-from',default='')
+    p.add_argument('--retain-lora',action='store_true',help='Keep inherited B-stage adapters active but frozen during A1/A2')
     p.add_argument('--from-base',action='store_true',help='Start this stage directly from original base weights without a parent delta')
     p.add_argument('--training-subset-size',type=int,choices=(20000,50000),default=0,help='Override the stage cache size while preserving original stage defaults otherwise')
     p.add_argument('--qdm-layers',default=None,help='Comma-separated zero-based joint layers; default replaces all 28')
@@ -106,6 +107,7 @@ def validate_parent(state,stage,config,metadata,parent_data_fingerprint):
     if state['config'].get('qdm_layers',list(range(28)))!=config.get('qdm_layers',list(range(28))):raise ValueError('Parent QDM layout mismatch')
     if state['config'].get('attention_mode','hybrid')!=config.get('attention_mode','hybrid'):raise ValueError('Parent attention_mode mismatch')
     if state['config'].get('memory_text_write',False)!=config.get('memory_text_write',False):raise ValueError('Parent memory_text_write mismatch')
+    if state['config'].get('retain_lora',False)!=config.get('retain_lora',False):raise ValueError('Parent retained LoRA mismatch')
     if state['config'].get('halo',0)!=config.get('halo',0):raise ValueError('Parent halo mismatch')
     for key in ('region_size','lora_rank','lora_alpha','seed'):
         if state['config'][key]!=config[key]:raise ValueError(f'Parent {key} mismatch')
@@ -182,6 +184,7 @@ def _run_stage(args,stage,rank,world,device):
                                        dit_compute=DIT_COMPUTE))
     if args.attention_mode!='hybrid':metadata['attention_mode']=args.attention_mode
     if args.memory_text_write:metadata['memory_text_write']=True
+    if args.retain_lora:metadata['retain_lora']=True
     if args.qdm_layers!=list(range(28)):
         metadata['qdm_layers']=args.qdm_layers
     saved=None
@@ -191,7 +194,7 @@ def _run_stage(args,stage,rank,world,device):
         if saved.is_dir() and (saved/'checkpoints').exists():saved=latest_checkpoint(saved)
         if saved is None:raise FileNotFoundError(args.resume)
     random.seed(args.seed);np.random.seed(args.seed);torch.manual_seed(args.seed);torch.cuda.manual_seed(args.seed)
-    net=build_model(paths['dit'],stage,device,args.region_size,args.lora_rank,args.lora_alpha,qdm_layers=args.qdm_layers,halo=args.halo,attention_mode=args.attention_mode,memory_text_write=args.memory_text_write)
+    net=build_model(paths['dit'],stage,device,args.region_size,args.lora_rank,args.lora_alpha,qdm_layers=args.qdm_layers,halo=args.halo,attention_mode=args.attention_mode,memory_text_write=args.memory_text_write,retain_lora=args.retain_lora)
     blocks=list(iter_qdm_blocks(net))
     groups=optimizer_groups(net,stage)
     if not groups:raise ValueError('No trainable parameters: local-only adaptation requires --stage b (LoRA and Softmax gate)')
@@ -203,6 +206,7 @@ def _run_stage(args,stage,rank,world,device):
         if previous.get('qdm_layers',list(range(28)))!=args.qdm_layers:raise ValueError('Resume QDM layout mismatch')
         if previous.get('attention_mode','hybrid')!=args.attention_mode:raise ValueError('Resume attention_mode mismatch')
         if previous.get('memory_text_write',False)!=args.memory_text_write:raise ValueError('Resume memory_text_write mismatch')
+        if previous.get('retain_lora',False)!=args.retain_lora:raise ValueError('Resume retained LoRA mismatch')
         if previous.get('halo',0)!=args.halo:raise ValueError('Resume halo mismatch')
         for key in ('region_size','lora_rank','lora_alpha','seed','sample_limit'):
             if previous[key]!=config[key]:raise ValueError(f'Resume {key} mismatch')
@@ -221,7 +225,7 @@ def _run_stage(args,stage,rank,world,device):
         parent=Path(args.init_from) if args.init_from else latest_checkpoint(root/previous_stage)
         if parent is None:raise FileNotFoundError(f'No parent checkpoint for stage {stage}')
         state=read_checkpoint(parent)
-        parent_fingerprint=CachedDataset(args.subset_root,args.cache_root,stage_settings(args,previous_stage)['subset'],limit=args.sample_limit).fingerprint if previous_stage else metadata['data_fingerprint']
+        parent_fingerprint=CachedDataset(args.subset_root,args.cache_root,state['config']['settings']['subset'],limit=args.sample_limit).fingerprint if previous_stage else metadata['data_fingerprint']
         validate_parent(state,stage,config,metadata,parent_fingerprint)
         inherited=torch.load(parent/'delta.pt',map_location='cpu',weights_only=True)
         result=load_delta(net,inherited,strict=False)

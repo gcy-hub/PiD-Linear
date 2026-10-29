@@ -290,7 +290,7 @@ def _worker_batch(args, tasks):
                                lora_rank=config.get('lora_rank',64),lora_alpha=config.get('lora_alpha',64),
                                qdm_layers=config.get('qdm_layers'),halo=config.get('halo',0),
                                attention_mode=config.get('attention_mode','hybrid'),
-                               memory_text_write=config.get('memory_text_write',False))
+                               memory_text_write=config.get('memory_text_write',False),retain_lora=config.get('retain_lora',False))
         load_delta(pipe.dit,torch.load(args.checkpoint/'delta.pt',map_location='cpu',weights_only=False),strict=True)
         pipe.dit.eval()
         with torch.inference_mode():

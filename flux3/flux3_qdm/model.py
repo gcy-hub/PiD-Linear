@@ -57,9 +57,9 @@ def _delta_named_parameters(model):
     return ((name, p) for name, p in model.named_parameters() if id(p) in ids)
 
 
-def configure_stage(model, stage, rank=64, alpha=64):
+def configure_stage(model, stage, rank=64, alpha=64, retain_lora=False):
     stage = _stage(stage)
-    if stage == "B":
+    if stage == "B" or retain_lora:
         for block in iter_qdm_blocks(model):
             for name in ("q_proj", "k_proj", "v_proj", "attn_out"):
                 layer = getattr(block.orig, name)
@@ -296,7 +296,7 @@ class Flux3QDM(nn.Module):
         return base.final_layer["image"](image, vec["image"])
 
 
-def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_alpha=64, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False):
+def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_alpha=64, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, retain_lora=False):
     from safetensors.torch import load_file
 
     path = Path(weights_path)
@@ -313,4 +313,4 @@ def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_a
     del state
     base.to(device=device)
     model = Flux3QDM(base, region_size, qdm_layers=qdm_layers, halo=halo, attention_mode=attention_mode, memory_text_write=memory_text_write)
-    return configure_stage(model, stage, rank=lora_rank, alpha=lora_alpha)
+    return configure_stage(model, stage, rank=lora_rank, alpha=lora_alpha, retain_lora=retain_lora)

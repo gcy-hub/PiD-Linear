@@ -79,6 +79,7 @@ def generate(args):
         dtype='bfloat16',torch_version=str(torch.__version__),stage=args.stage,
         architecture={k:config.get(k,default) for k,default in [('attention_mode','hybrid'),('halo',0),('region_size',8),('lora_rank',64),('lora_alpha',64),('qdm_layers',None)]})
     if config.get('memory_text_write',False):identity['architecture']['memory_text_write']=True
+    if config.get('retain_lora',False):identity['architecture']['retain_lora']=True
     manifest=args.output_root/'run.json'
     old=read_json(manifest)
     if old and old!=identity:

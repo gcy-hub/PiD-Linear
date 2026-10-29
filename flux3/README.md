@@ -114,6 +114,10 @@ bash flux3/scripts/prepare_and_train_flux3_qdm.sh --output-root "$FLUX3_QDM_RUN"
 
 `--stop` writes both bootstrap and training stop markers. A training cycle saves at an update/image boundary; preparation retains all completed cache files. Running the original launch command again resumes after the previous owned child exits. A1 completion includes its validation and does not trigger A2.
 
+## 8卡四组并行，再合并全部28层
+
+需要“4个双卡队列完成14组独立实验，再合并各组B权重，8卡联合训练A1 500步、A2 1000步、B 10000步”时，使用[并行及联合训练说明](docs/parallel-pairs.md)。每卡bs2、累积1；联合阶段每500步保存并生成10张学生2K图。数据使用现有50K及其20K子集。
+
 ## 14 组独立双层实验
 
 该入口按顺序测试 `[0,1]`、`[2,3]`，直到 `[26,27]`，编号为从 0 开始的 Joint Attention 层索引。每组只将选定的两层替换为 **Local Softmax + Halo2 + 四象限 QDM**，其余 26 层保持原始 Full Attention。每组独立从原始 base 初始化，不继承其他组的学生权重。

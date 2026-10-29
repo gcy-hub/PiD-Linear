@@ -30,7 +30,7 @@ def validate_checkpoint_identity(checkpoint,base_path,config,state=None):
     layout=normalize_qdm_layers(config.get('qdm_layers'))
     if normalize_qdm_layers(saved.get('qdm_layers'))!=layout:
         raise ValueError('Checkpoint QDM layout does not match inference architecture')
-    for key,default in [('attention_mode','hybrid'),('memory_text_write',False),('halo',0),('region_size',8),('lora_rank',64),('lora_alpha',64)]:
+    for key,default in [('attention_mode','hybrid'),('memory_text_write',False),('retain_lora',False),('halo',0),('region_size',8),('lora_rank',64),('lora_alpha',64)]:
         if saved.get(key,default)!=config.get(key,default):
             raise ValueError(f'Checkpoint {key} does not match inference architecture')
     metadata=state.get('metadata',{})
