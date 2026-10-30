@@ -54,7 +54,18 @@ def gpu_free_memory():
     return {int(row.split(',')[0]):int(row.split(',')[1]) for row in result.stdout.splitlines() if row.strip()}
 
 
+def saved_plan(root):
+    plan=repeat.read_json(root/'plan.json')
+    if plan:return plan
+    request=repeat.read_json(root/'repeat/request.json')
+    if not request:return {}
+    return dict(kind='staged',config={k:v for k,v in request.items() if k not in ('cycle','stalled_cycles')})
+
+
 def pending_roots(root,plan):
+    if plan.get('kind')=='staged':
+        stage=repeat.select_stage(root,plan['config']['stage'])
+        return [(root,stage)] if stage is not None else []
     if 'groups' not in plan:
         return [(root/p['name'],repeat.select_stage(root/p['name'],'all')) for p in plan['pairs']
                 if repeat.select_stage(root/p['name'],'all') is not None]
@@ -88,6 +99,9 @@ def launch_saved(root,kind,config):
                       OMP_NUM_THREADS=str(config.get('threads',1)),MKL_NUM_THREADS=str(config.get('threads',1)),
                       OPENBLAS_NUM_THREADS=str(config.get('threads',1)),TOKENIZERS_PARALLELISM='false')
     os.environ['PATH']=str(Path(sys.executable).parent)+os.pathsep+os.getenv('PATH','/usr/bin:/bin')
+    if kind=='staged':
+        repeat.launch(root,config)
+        return
     if kind=='parallel':
         from .parallel_pipeline import launch
     else:
@@ -101,7 +115,7 @@ def check_once(root,config):
     if socket.gethostname()!=config['hostname']:return result('different-host')
     if not config.get('enabled',False):return result('disabled')
     if (root/'repeat/STOP').exists():return result('stopped')
-    plan=repeat.read_json(root/'plan.json')
+    plan=saved_plan(root)
     if not plan:return result('waiting-for-plan')
     if config.get('plan_sha256') and config['plan_sha256']!=plan_hash(plan):return result('plan-changed')
     if lock_held(root/'repeat/controller.lock'):return result('running')
@@ -129,9 +143,9 @@ def check_once(root,config):
 
 def install(root,args):
     directory=root/'repeat/reboot-watch';directory.mkdir(parents=True,exist_ok=True)
-    plan=repeat.read_json(root/'plan.json')
+    plan=saved_plan(root)
     if not plan:raise ValueError('Start the workload once so plan.json records its exact resume configuration')
-    kind='parallel' if 'groups' in plan else 'pairs'
+    kind=plan.get('kind') or ('parallel' if 'groups' in plan else 'pairs')
     if not plan.get('config',{}).get('gpu_ids'):raise ValueError('Saved plan lacks GPU IDs')
     if args.min_free_mib<1:raise ValueError('--min-free-mib must be positive')
     config=dict(enabled=True,hostname=socket.gethostname(),kind=kind,min_free_mib=args.min_free_mib,

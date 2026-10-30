@@ -607,3 +607,29 @@ bash flux3/scripts/watch_flux3_resume.sh --remove \
 ```
 
 连续三次启动异常后监控暂停尝试并记录原因；排查后重新安装监控可重新启用。实际重启恢复取决于开机后cron、代码/数据所在文件系统及GPU驱动恢复可用。
+
+## 从14组已训练层合并初始化，做三阶段短程联合训练
+
+可用`flux3_qdm.merge_pairs`按层合并14组已完成验证的B checkpoint，再用`--a1-init-from`只初始化A1。A2/B自动加载本输出目录内上一阶段的结果。`--retain-lora`保留已有适配器，在A1/A2冻结，在B解冻。
+
+```bash
+conda activate flux3-qdm
+export FLUX3_MERGED_RUN="$PWD/outputs/flux3-merged28-100steps"
+PYTHONPATH="$PWD/flux3:$PWD/flux3/DiffSynth-Studio" \
+python -m flux3_qdm.merge_pairs \
+  --group-roots "$PWD/outputs/flux3-pairwise-hybrid-50" \
+  --output-root "$FLUX3_MERGED_RUN/merged"
+
+FLUX3_MERGED_CHECKPOINT="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["checkpoint"])' "$FLUX3_MERGED_RUN/merged/ready.json")"
+GPU_IDS=1,2,3 CPU_THREADS=1 bash flux3/scripts/train_flux3_qdm_repeat.sh \
+  --stage all --output-root "$FLUX3_MERGED_RUN" \
+  --weights-root "$FLUX3_WEIGHTS_ROOT" \
+  --subset-root "$FLUX3_SUBSET_ROOT" --cache-root "$FLUX3_CACHE_ROOT" \
+  --a1-init-from "$FLUX3_MERGED_CHECKPOINT" --retain-lora \
+  --attention-mode hybrid --region-size 8 --halo 2 \
+  --training-subset-size 20000 --steps 100 --warmup-steps 10 \
+  --batch-size 2 --grad-accum 1 --save-steps 100 --validation-steps 100 \
+  --workers 4 --threads 1 --resume auto --cycle-seconds 1200
+```
+
+以上是独立的100/100/100步联合诊断配置，三个阶段均使用现有20K缓存。每阶段结束生成10张学生2K图，20分钟周期退出时额外保存恢复状态。也可使用`watch_flux3_resume.sh --install --output-root "$FLUX3_MERGED_RUN"`安装开机恢复监控。

@@ -42,6 +42,7 @@ def parse_args(argv=None):
     p.add_argument('--output-root',default='outputs/flux3-qdm')
     p.add_argument('--resume',default='auto')
     p.add_argument('--init-from',default='')
+    p.add_argument('--a1-init-from',default='',help='Warm-start only A1, then load same-run A1/A2 parents for later stages')
     p.add_argument('--retain-lora',action='store_true',help='Keep inherited B-stage adapters active but frozen during A1/A2')
     p.add_argument('--from-base',action='store_true',help='Start this stage directly from original base weights without a parent delta')
     p.add_argument('--training-subset-size',type=int,choices=(20000,50000),default=0,help='Override the stage cache size while preserving original stage defaults otherwise')
@@ -67,6 +68,7 @@ def parse_args(argv=None):
     if not args.qdm_layers:p.error('Training needs at least one QDM layer')
     if min(args.batch_size,args.grad_accum,args.workers,args.threads,args.log_steps,args.region_size)<1:
         p.error('batch, accumulation, workers, threads, log interval and region size must be positive')
+    if args.a1_init_from and (args.init_from or args.from_base):p.error('--a1-init-from cannot be combined with --init-from or --from-base')
     if args.from_base and args.init_from:p.error('--from-base and --init-from are mutually exclusive')
     if args.from_base and args.stage=='all':p.error('--from-base requires a single explicit stage')
     if args.halo<0:p.error('--halo cannot be negative')
@@ -91,8 +93,12 @@ def stage_settings(args,stage):
     return settings
 
 
+def initial_source(args,stage):
+    return args.init_from or (getattr(args,'a1_init_from','') if stage=='a1' else '')
+
+
 def requires_parent(args,stage):
-    return bool(args.init_from) or (stage!='a1' and not args.from_base)
+    return bool(initial_source(args,stage)) or (stage!='a1' and not args.from_base)
 
 
 def consensus(value,device):
@@ -222,7 +228,8 @@ def _run_stage(args,stage,rank,world,device):
         config['resumed_from']=str(saved)
     elif requires_parent(args,stage):
         previous_stage={'a2':'a1','b':'a2'}.get(stage)
-        parent=Path(args.init_from) if args.init_from else latest_checkpoint(root/previous_stage)
+        source=initial_source(args,stage)
+        parent=Path(source) if source else latest_checkpoint(root/previous_stage)
         if parent is None:raise FileNotFoundError(f'No parent checkpoint for stage {stage}')
         state=read_checkpoint(parent)
         parent_fingerprint=CachedDataset(args.subset_root,args.cache_root,state['config']['settings']['subset'],limit=args.sample_limit).fingerprint if previous_stage else metadata['data_fingerprint']
