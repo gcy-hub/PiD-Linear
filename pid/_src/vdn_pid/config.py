@@ -91,6 +91,9 @@ class VDNConfig:
     shift_base_size: int = 2048
     region_size: int = 8
     local_mode: str = "window"
+    sliding_kernel_size: int = 11
+    sliding_backend: str = "natten"
+    sliding_query_chunk: int = 128
     local_halo: int = 0
     local_shift: int = 4
     local_chunk: int = 16
@@ -183,6 +186,8 @@ def local_layout(config):
     result = dict(schema=1,mode=mode,region_size=get('region_size',8),
         halo=get('local_halo',0) if mode=='halo' else 0,
         shift=get('local_shift',4) if mode=='alternating_shift' else 0)
+    if mode == 'sliding':
+        result.update(kernel_size=get('sliding_kernel_size',11), boundary='centered-clipped', stride=1)
     retained = normalize_full_attention_layers(get('full_attention_layers', ''))
     if retained:
         result['full_attention_layers'] = retained

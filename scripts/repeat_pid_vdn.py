@@ -154,6 +154,7 @@ def training_command(root, stage, request):
             "gallery_root",
             "region_size",
             "local_mode",
+            "sliding_kernel_size", "sliding_backend", "sliding_query_chunk",
             "local_halo",
             "local_shift",
             "local_chunk",

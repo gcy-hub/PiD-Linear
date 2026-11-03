@@ -171,6 +171,9 @@ class JointVDN(nn.Module):
         return project(x, self.orig.qkv_x), project(y, self.orig.qkv_y)
 
     def local(self, x, y, qkv, tqkv, pos_img, pos_txt, grid, attn_mask=None):
+        if self.local_mode == "sliding":
+            from .sliding import local_attention
+            return local_attention(self,x,y,qkv,tqkv,pos_img,pos_txt,grid,attn_mask)
         if self.local_mode != "window":
             from .local_windows import local_attention
             return local_attention(self,x,y,qkv,tqkv,pos_img,pos_txt,grid,attn_mask)

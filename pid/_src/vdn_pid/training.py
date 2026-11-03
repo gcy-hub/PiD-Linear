@@ -120,6 +120,11 @@ def build_student(config, stage, device, load_base=True):
     for block in net.patch_blocks:
         if isinstance(block.attn, JointVDN):
             block.attn.attention_batch_chunk = config.attention_batch_chunk
+    for block in net.patch_blocks:
+        if isinstance(block.attn, JointVDN):
+            block.attn.sliding_kernel_size = config.sliding_kernel_size
+            block.attn.sliding_backend = config.sliding_backend
+            block.attn.sliding_query_chunk = config.sliding_query_chunk
     net.activation_checkpointing = config.activation_checkpointing
     net.pit_chunk_size = config.pit_chunk_size
     return net.to(device)
@@ -680,6 +685,7 @@ def parse_args(argv=None):
         "memory_mode",
         "full_attention_layers",
         "local_mode",
+        "sliding_backend",
         "stage",
         "preset",
         "resume",
@@ -695,6 +701,8 @@ def parse_args(argv=None):
         "a1_batch_size", "a2_batch_size", "b_batch_size",
         "a1_steps", "a2_steps", "b_steps",
         "shift_base_size",
+        "sliding_kernel_size",
+        "sliding_query_chunk",
         "local_halo",
         "local_shift",
         "local_chunk",
@@ -750,8 +758,12 @@ def parse_args(argv=None):
         parser.error("stage must be a1,a2,b,all")
     if config.memory_mode not in ("vda", "fixed4"):
         parser.error("memory-mode must be vda or fixed4")
-    if config.local_mode not in ('window','halo'):
-        parser.error('This branch supports window or halo local attention')
+    if config.local_mode not in ('window','halo','sliding'):
+        parser.error('local-mode must be window, halo or sliding')
+    if config.sliding_kernel_size < 1 or config.sliding_kernel_size % 2 != 1 or config.sliding_query_chunk < 1:
+        parser.error('Sliding kernel must be positive and odd, and query chunk positive')
+    if config.sliding_backend not in ('natten','reference'):
+        parser.error('sliding-backend must be natten or reference')
     if config.local_halo<0 or config.local_chunk<1 or (config.local_mode=='alternating_shift' and not 0<config.local_shift<config.region_size):
         parser.error('Invalid local halo/shift/chunk')
     if config.region_size < 1 or config.workers < 0 or config.threads < 1 or config.log_steps < 1:
