@@ -38,4 +38,55 @@ bash flux3/scripts/train_flux3_sliding_qdm.sh --stop
 
 验证位于 `a1|a2|b/galleries/step_XXXXXXXXX/student/2048/`。同一实验始终使用同一输出目录。checkpoint 保存局部几何及 kernel，恢复、阶段衔接和推理都拒绝不一致的窗口配置。
 
-专用入口默认包含 `--replace-image-blocks`。底层通用入口仍默认只替换联合层，兼容旧实验；其 `--no-replace-image-blocks` 可显式恢复 28 层范围。33 层与 28 层 checkpoint 的范围标记不同，不能互相作为同阶段恢复或阶段衔接来源。当前正式实验尚未开始，仍从原始 Base 开始 A1。
+专用入口默认包含 `--replace-image-blocks`。底层通用入口仍默认只替换联合层，兼容旧实验；其 `--no-replace-image-blocks` 可显式恢复 28 层范围。33 层与 28 层 checkpoint 的范围标记不同，不能互相作为同阶段恢复或阶段衔接来源。新实验从原始 Base 开始 A1。
+
+## 在另一台服务器训练
+
+代码分支为 `FLUX3-sliding-QDM`。本地交付的 `FLUX3-sliding-QDM.bundle` 包含该分支及 Git 历史，不包含权重、数据、缓存和训练输出。复制到目标服务器后，可以在新目录克隆；已有仓库也可直接 fetch 该 bundle 并创建分支。
+
+```bash
+git clone -b FLUX3-sliding-QDM /path/to/FLUX3-sliding-QDM.bundle PiD-Linear-sliding
+cd PiD-Linear-sliding
+```
+
+按 [环境及权重说明](../README.md) 安装 `flux3-qdm`。资源根目录需要 `flux-3-image-klein-base/model.safetensors`，以及 `flux-3-image-klein/` 下的原生 Qwen3-VL 编码器、processor、VAE 和校验 manifest。可复制这两个完整目录，或使用主说明中的下载、校验入口。
+
+若服务器已有 `pid-vdn-50k` 图文导出包，无需完整 1M，也无需 PiD 的 latent 验证包。先将导出包导入本机索引；导入只检查原图并建立索引，不复制图片。三个阶段均选择其中相同的 20K。
+
+```bash
+conda activate flux3-qdm
+export FLUX3_WEIGHTS_ROOT="$HOME/huggingface_ckpts"
+export FLUX3_EXPORT_ROOT="/path/to/pid-vdn-50k"
+python -m pid._src.vdn_pid.portable_data import \
+  --package-root "$FLUX3_EXPORT_ROOT" \
+  --output-root "$FLUX3_EXPORT_ROOT/training" --workers 4 --resume
+export FLUX3_SUBSET_ROOT="$FLUX3_EXPORT_ROOT/training/subsets"
+export FLUX3_CACHE_ROOT="$FLUX3_EXPORT_ROOT/flux3_qdm_cache"
+```
+
+随后准备 FLUX.3 原生缓存，不能使用 Gemma/PiD 缓存代替。缓存含模型、源图片路径和文件时间戳校验；从其他服务器复制来的缓存必须先核验，不通过时按本机路径重跑准备，禁止绕过指纹检查。
+
+```bash
+conda activate flux3-qdm
+bash flux3/scripts/prepare_flux3_qdm.sh \
+  --weights-root "$FLUX3_WEIGHTS_ROOT" \
+  --subset-root "$FLUX3_SUBSET_ROOT" --cache-root "$FLUX3_CACHE_ROOT" \
+  --subset-size 20000 --phase all --gpu-ids 0,1,2,3,4,5,6,7 \
+  --workers 4 --threads 1 --resume --max-seconds 0
+bash flux3/scripts/prepare_flux3_qdm.sh \
+  --weights-root "$FLUX3_WEIGHTS_ROOT" \
+  --subset-root "$FLUX3_SUBSET_ROOT" --cache-root "$FLUX3_CACHE_ROOT" \
+  --subset-size 20000 --check-only
+```
+
+准备完成后再启动训练。示例为单机八卡、每卡 bs2、累积1，有效 batch16；更改卡数时有效 batch 随之改变。训练和验证步数沿用本页配置，正式训练从原始权重开始，无需本机 node01 的 checkpoint。
+
+```bash
+conda activate flux3-qdm
+GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
+bash flux3/scripts/train_flux3_sliding_qdm.sh \
+  --batch-size 2 --grad-accum 1 \
+  --output-root "$PWD/outputs/flux3-sliding11-qdm-2k-server"
+```
+
+双节点训练不能仅靠 GPU_IDS 指定远程卡；上面的命令是单机八卡入口。更改为双节点时需另行配置分布式启动和共享路径。

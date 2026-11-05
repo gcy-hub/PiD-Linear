@@ -87,7 +87,10 @@ def load_records(subset_root, subset_size):
                     raise ValueError(f'Missing image_path/caption for row {row_id}')
                 if not Path(record['image_path']).is_absolute():
                     index = json.loads((root / 'index.json').read_text())
-                    record['image_path'] = str(Path(index.get('dataset_root', root)) / record['image_path'])
+                    dataset_root = Path(index.get('dataset_root', root))
+                    if not dataset_root.is_absolute():
+                        dataset_root = root / dataset_root
+                    record['image_path'] = str((dataset_root / record['image_path']).resolve())
                 if bucket not in BUCKETS_2K:
                     raise ValueError(f'Unknown PiD 2K bucket {bucket}')
                 seen_rows.add(row_id)
