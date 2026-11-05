@@ -190,7 +190,7 @@ def _layouts(packed):
 
 
 class Flux3QDM(nn.Module):
-    def __init__(self, base, region_size=8, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False):
+    def __init__(self, base, region_size=8, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, local_attention="halo", sliding_kernel_size=11):
         super().__init__()
         if base.flow_map:
             raise ValueError("The base FLUX3 T2I checkpoint must not use flow_map")
@@ -204,7 +204,8 @@ class Flux3QDM(nn.Module):
                 raise ValueError("Native blocks already wrapped")
             if i not in self.qdm_layers:
                 continue
-            wrapped = QDMBlock(block, region_size=region_size, halo=halo, attention_mode=attention_mode, memory_text_write=memory_text_write)
+            wrapped = QDMBlock(block, region_size=region_size, halo=halo, attention_mode=attention_mode, memory_text_write=memory_text_write,
+                               local_attention=local_attention, sliding_kernel_size=sliding_kernel_size)
             wrapped.layer_index = i
             # New trainable parameters remain FP32; preserve native base dtype.
             if wrapped.remote is not None:
@@ -296,7 +297,7 @@ class Flux3QDM(nn.Module):
         return base.final_layer["image"](image, vec["image"])
 
 
-def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_alpha=64, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, retain_lora=False):
+def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_alpha=64, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, retain_lora=False, local_attention="halo", sliding_kernel_size=11):
     from safetensors.torch import load_file
 
     path = Path(weights_path)
@@ -312,5 +313,6 @@ def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_a
     base.load_state_dict(state, strict=True, assign=True)
     del state
     base.to(device=device)
-    model = Flux3QDM(base, region_size, qdm_layers=qdm_layers, halo=halo, attention_mode=attention_mode, memory_text_write=memory_text_write)
+    model = Flux3QDM(base, region_size, qdm_layers=qdm_layers, halo=halo, attention_mode=attention_mode, memory_text_write=memory_text_write,
+                     local_attention=local_attention, sliding_kernel_size=sliding_kernel_size)
     return configure_stage(model, stage, rank=lora_rank, alpha=lora_alpha, retain_lora=retain_lora)

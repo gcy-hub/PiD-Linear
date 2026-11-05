@@ -215,11 +215,14 @@ class QuadrantMemory(nn.Module):
 class QDMBlock(nn.Module):
     """Own exactly one frozen native Block; replace only its attention computation."""
 
-    def __init__(self, orig, region_size=8, region_chunk=16, halo=0, attention_mode="hybrid", memory_text_write=False):
+    def __init__(self, orig, region_size=8, region_chunk=16, halo=0, attention_mode="hybrid", memory_text_write=False, local_attention="halo", sliding_kernel_size=11):
         super().__init__()
         if region_size < 1 or region_chunk < 1 or halo < 0:
             raise ValueError("Window/chunk must be positive")
         self.orig = orig
+        if local_attention not in ('halo', 'sliding') or sliding_kernel_size < 1 or sliding_kernel_size%2 != 1:
+            raise ValueError('Invalid local attention geometry or sliding kernel')
+        self.local_geometry, self.sliding_kernel_size = local_attention, sliding_kernel_size
         self.halo = halo
         self.region_size, self.region_chunk = region_size, region_chunk
         hidden = orig.q_proj.weight.shape[0]
@@ -254,6 +257,12 @@ class QDMBlock(nn.Module):
         for s in samples:
             if s.image_start != s.start or s.image_end != s.text_start or s.text_end != s.end:
                 raise ValueError("T2I packed order must be image then text")
+            if self.local_geometry == 'sliding':
+                from .sliding import sliding_joint_attention
+                values = [z[:, :, s.start:s.end] for z in (q, k, v)]
+                output = sliding_joint_attention(*values, s.grid, s.text_end-s.text_start, self.sliding_kernel_size)
+                pieces.append(output[0].transpose(0, 1))
+                continue
             iq, ik, iv = [z[:, :, s.image_start : s.image_end].transpose(1, 2) for z in (q, k, v)]
             qp, valid = pack_regions(iq, s.grid, self.region_size)
             if self.halo:

@@ -26,6 +26,10 @@ def validate_checkpoint_identity(checkpoint,base_path,config,state=None):
         import torch
         state=torch.load(checkpoint/'state.pt',map_location='cpu',weights_only=False,mmap=True)
     saved=state.get('config',{})
+    from .sliding import validate_local_attention
+    validate_local_attention(saved,config)
+    if config.get('local_attention','halo')=='sliding':
+        validate_local_attention(state.get('metadata',{}),config)
     from .model import normalize_qdm_layers
     layout=normalize_qdm_layers(config.get('qdm_layers'))
     if normalize_qdm_layers(saved.get('qdm_layers'))!=layout:

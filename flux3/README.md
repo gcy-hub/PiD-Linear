@@ -32,6 +32,10 @@ export GPU_IDS="1,2"  # Replace with the GPUs allocated to this workload.
 
 GPU IDs are configurable. Preparation uses the current process's logical CUDA IDs; the training launcher applies `GPU_IDS` as `CUDA_VISIBLE_DEVICES` and assigns one training process to each selected GPU. Keep that selection fixed when resuming so the effective batch and sampler state remain consistent. Scripts do not request Slurm allocations.
 
+## Sliding11 + QDM
+
+28 层联合 Attention 的 Sliding Softmax + QDM 三阶段训练、后台续训与验证见 [运行说明](docs/sliding-qdm.md)。默认 A1 200 步、A2 400 步、B 10000 步，每 200 步生成 10 张学生 2K 图像。
+
 ## Weights
 
 The base DiT is expected at `$FLUX3_WEIGHTS_ROOT/flux-3-image-klein-base/model.safetensors`. Download that exact base checkpoint through the official Hugging Face CLI if it is absent. Complete any repository access authorization in your own Hugging Face account first.

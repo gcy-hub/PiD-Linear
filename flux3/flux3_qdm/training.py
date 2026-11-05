@@ -48,6 +48,10 @@ def parse_args(argv=None):
     p.add_argument('--training-subset-size',type=int,choices=(20000,50000),default=0,help='Override the stage cache size while preserving original stage defaults otherwise')
     p.add_argument('--qdm-layers',default=None,help='Comma-separated zero-based joint layers; default replaces all 28')
     p.add_argument('--attention-mode',choices=('hybrid','local-only','memory-only'),default='hybrid')
+    p.add_argument('--local-attention',choices=('halo','sliding'),default='halo')
+    p.add_argument('--sliding-kernel-size',type=int,default=11)
+    for stage in STAGES:
+        p.add_argument('--'+stage+'-steps', type=int, default=0)
     p.add_argument('--memory-text-write',action='store_true',help='Write valid text K/V into each QDM bank; image memory remains NoPE')
     p.add_argument('--caption-dropout',type=float,default=.1)
     p.add_argument('--warmup-steps',type=int,default=-1,help='Override stage warmup; -1 keeps original stage defaults')
@@ -72,12 +76,15 @@ def parse_args(argv=None):
     if args.from_base and args.init_from:p.error('--from-base and --init-from are mutually exclusive')
     if args.from_base and args.stage=='all':p.error('--from-base requires a single explicit stage')
     if args.halo<0:p.error('--halo cannot be negative')
+    if args.sliding_kernel_size<1 or args.sliding_kernel_size%2!=1:p.error('Sliding kernel must be positive and odd')
+    if args.local_attention=='sliding' and args.halo:p.error('Sliding has per-query neighborhoods; --halo must be zero')
+    if any(getattr(args,s+'_steps')<0 for s in STAGES):p.error('Stage steps cannot be negative')
     if args.memory_text_write and args.attention_mode=='local-only':p.error('--memory-text-write requires a QDM branch')
     if args.steps and args.max_steps and args.steps!=args.max_steps:p.error('--steps and --max-steps disagree')
     if args.steps<0 or args.max_steps<0 or args.max_seconds<0:p.error('Limits cannot be negative')
     if args.warmup_steps < -1:p.error('--warmup-steps must be -1 or nonnegative')
     for stage in STAGES if args.stage=='all' else (args.stage,):
-        total=args.steps or args.max_steps or STAGES[stage]['steps']
+        total=args.steps or args.max_steps or getattr(args,stage+'_steps') or STAGES[stage]['steps']
         if args.warmup_steps>=total:p.error('--warmup-steps must be smaller than stage steps')
     if not 0 <= args.caption_dropout <= 1:p.error('--caption-dropout must lie in [0, 1]')
     return args
@@ -86,7 +93,7 @@ def parse_args(argv=None):
 def stage_settings(args,stage):
     settings=STAGES[stage].copy()
     if getattr(args,'training_subset_size',0):settings['subset']=args.training_subset_size
-    settings['steps']=args.steps or args.max_steps or settings['steps']
+    settings['steps']=args.steps or args.max_steps or getattr(args,stage+'_steps',0) or settings['steps']
     settings['save']=args.save_steps or settings['save']
     settings['validate']=settings['validate'] if args.validation_steps<0 else args.validation_steps
     if getattr(args,'warmup_steps',-1)>=0:settings['warmup']=args.warmup_steps
@@ -108,6 +115,8 @@ def consensus(value,device):
 
 
 def validate_parent(state,stage,config,metadata,parent_data_fingerprint):
+    from .sliding import validate_local_attention
+    validate_local_attention(state['config'],config)
     previous={'a2':'a1','b':'a2'}.get(stage)
     if previous and state['config']['stage']!=previous:raise ValueError('Parent checkpoint belongs to a different stage')
     if state['config'].get('qdm_layers',list(range(28)))!=config.get('qdm_layers',list(range(28))):raise ValueError('Parent QDM layout mismatch')
@@ -191,6 +200,8 @@ def _run_stage(args,stage,rank,world,device):
     if args.attention_mode!='hybrid':metadata['attention_mode']=args.attention_mode
     if args.memory_text_write:metadata['memory_text_write']=True
     if args.retain_lora:metadata['retain_lora']=True
+    if args.local_attention=='sliding':
+        metadata.update(local_attention='sliding',sliding_kernel_size=args.sliding_kernel_size)
     if args.qdm_layers!=list(range(28)):
         metadata['qdm_layers']=args.qdm_layers
     saved=None
@@ -200,7 +211,8 @@ def _run_stage(args,stage,rank,world,device):
         if saved.is_dir() and (saved/'checkpoints').exists():saved=latest_checkpoint(saved)
         if saved is None:raise FileNotFoundError(args.resume)
     random.seed(args.seed);np.random.seed(args.seed);torch.manual_seed(args.seed);torch.cuda.manual_seed(args.seed)
-    net=build_model(paths['dit'],stage,device,args.region_size,args.lora_rank,args.lora_alpha,qdm_layers=args.qdm_layers,halo=args.halo,attention_mode=args.attention_mode,memory_text_write=args.memory_text_write,retain_lora=args.retain_lora)
+    net=build_model(paths['dit'],stage,device,args.region_size,args.lora_rank,args.lora_alpha,qdm_layers=args.qdm_layers,halo=args.halo,attention_mode=args.attention_mode,memory_text_write=args.memory_text_write,retain_lora=args.retain_lora,
+                    local_attention=args.local_attention,sliding_kernel_size=args.sliding_kernel_size)
     blocks=list(iter_qdm_blocks(net))
     groups=optimizer_groups(net,stage)
     if not groups:raise ValueError('No trainable parameters: local-only adaptation requires --stage b (LoRA and Softmax gate)')
@@ -209,6 +221,8 @@ def _run_stage(args,stage,rank,world,device):
     progress=dict(stage_step=0,total_step=0,cursor=0,samples_seen=0,seen_rows=[],skipped_batches=0,validation_pending=False)
     if saved:
         state=read_checkpoint(saved);previous=state['config']
+        from .sliding import validate_local_attention
+        validate_local_attention(previous,config)
         if previous.get('qdm_layers',list(range(28)))!=args.qdm_layers:raise ValueError('Resume QDM layout mismatch')
         if previous.get('attention_mode','hybrid')!=args.attention_mode:raise ValueError('Resume attention_mode mismatch')
         if previous.get('memory_text_write',False)!=args.memory_text_write:raise ValueError('Resume memory_text_write mismatch')
