@@ -80,6 +80,7 @@ def generate(args):
         architecture={k:config.get(k,default) for k,default in [('attention_mode','hybrid'),('halo',0),('region_size',8),('lora_rank',64),('lora_alpha',64),('qdm_layers',None)]})
     if config.get('memory_text_write',False):identity['architecture']['memory_text_write']=True
     if config.get('retain_lora',False):identity['architecture']['retain_lora']=True
+    if config.get('replace_image_blocks',False):identity['architecture']['replace_image_blocks']=True
     if config.get('local_attention','halo')=='sliding':
         identity['architecture'].update(local_attention='sliding',sliding_kernel_size=config.get('sliding_kernel_size',11))
     manifest=args.output_root/'run.json'

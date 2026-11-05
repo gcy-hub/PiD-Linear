@@ -1,8 +1,8 @@
 """Native FLUX3 loading, stateless packed execution, and stage/delta APIs.
 
 The base model is allocated on meta and strict assigned from the native checkpoint.
-Only the 28 single-stream blocks own QDM additions. Early mode blocks, modulation,
-FFN and final layer execute the native implementation with its dummy padding.
+The 28 joint blocks and optionally five early image blocks own QDM additions.
+Early text/reference blocks, modulation, FFN and final layer retain native math.
 """
 
 from contextlib import contextmanager
@@ -190,7 +190,7 @@ def _layouts(packed):
 
 
 class Flux3QDM(nn.Module):
-    def __init__(self, base, region_size=8, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, local_attention="halo", sliding_kernel_size=11):
+    def __init__(self, base, region_size=8, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, local_attention="halo", sliding_kernel_size=11, replace_image_blocks=False):
         super().__init__()
         if base.flow_map:
             raise ValueError("The base FLUX3 T2I checkpoint must not use flow_map")
@@ -198,20 +198,24 @@ class Flux3QDM(nn.Module):
         self.teacher_mode = False
         self.attention_mode = attention_mode
         self.memory_text_write = bool(memory_text_write)
+        self.replace_image_blocks = bool(replace_image_blocks)
         self.qdm_layers = normalize_qdm_layers(qdm_layers, len(base.single_blocks))
-        for i, block in enumerate(base.single_blocks):
+        selected = [(base.single_blocks, i, i) for i in self.qdm_layers]
+        if self.replace_image_blocks:
+            selected = [(base.content_mode_blocks['image'], i, f'image_{i}')
+                        for i in range(len(base.content_mode_blocks['image']))] + selected
+        for blocks, i, label in selected:
+            block = blocks[i]
             if isinstance(block, QDMBlock):
                 raise ValueError("Native blocks already wrapped")
-            if i not in self.qdm_layers:
-                continue
             wrapped = QDMBlock(block, region_size=region_size, halo=halo, attention_mode=attention_mode, memory_text_write=memory_text_write,
                                local_attention=local_attention, sliding_kernel_size=sliding_kernel_size)
-            wrapped.layer_index = i
+            wrapped.layer_index = label
             # New trainable parameters remain FP32; preserve native base dtype.
             if wrapped.remote is not None:
                 wrapped.remote.to(device=block.q_proj.weight.device)
             wrapped.softmax_gate.to(device=block.q_proj.weight.device)
-            base.single_blocks[i] = wrapped
+            blocks[i] = wrapped
         self.base.requires_grad_(False)
 
     @property
@@ -240,17 +244,40 @@ class Flux3QDM(nn.Module):
         def mod_key(m):
             return "txt" if m == "text" else m
 
-        # All early paths are frozen and need no graph for input tensors produced by
-        # the offline cache. This matches the native padding and mode bounds exactly.
+        # Frozen embeddings/modulations need no graph for offline-cache inputs.
         with torch.no_grad():
             vec = {m: base.time_in(native.timestep_embedding(timesteps[m])) for m in native.MODES}
             early = {m: base.early_stream_modulations[mod_key(m)](vec[m]) for m in native.MODES}
             single = {m: base.single_stream_modulations[mod_key(m)](vec[m]) for m in native.MODES}
             x = {m: (base.txt_in if m == "text" else base.emb_in[m])(data[m]) for m in native.MODES}
             freqs = {m: native.rope_embed(ids[m][None]) for m in native.MODES}
-            for d in range(len(base.txt_mode_blocks)):
-                for m in ("image", "image_cond"):
-                    x[m] = base.content_mode_blocks[m][d](x[m], freqs[m], packed.mode_indices[m], early[m])
+
+        def call_block(block, z, f, bounds, mod, layouts):
+            # Each closure owns its block/bounds/layouts and the forward's mode;
+            # later teacher calls cannot switch student checkpoint recomputation.
+            def run(z, f, shift, scale, gate):
+                if not isinstance(block, QDMBlock):
+                    return block(z, f, bounds, (shift, scale, gate))
+                return block(z, f, bounds, (shift, scale, gate), samples=layouts,
+                             alignment_callback=alignment_callback, teacher_mode=teacher)
+            if use_gradient_checkpointing and not teacher and torch.is_grad_enabled():
+                return checkpoint(run, z, f, *mod, use_reentrant=False)
+            return run(z, f, *mod)
+
+        # Early image tokens are packed without text. Their QDM and local
+        # visibility use the same explicit grids, but no fabricated text tokens.
+        image_samples = tuple(SampleLayout(a, b, a, b, b, b, s.grid)
+                              for (a, b), s in zip(packed.mode_indices['image'], samples, strict=True))
+        for d in range(len(base.txt_mode_blocks)):
+            block = base.content_mode_blocks['image'][d]
+            if isinstance(block, QDMBlock):
+                x['image'] = call_block(block, x['image'], freqs['image'], packed.mode_indices['image'], early['image'], image_samples)
+            else:
+                with torch.no_grad():
+                    x['image'] = block(x['image'], freqs['image'], packed.mode_indices['image'], early['image'])
+            with torch.no_grad():
+                x['image_cond'] = base.content_mode_blocks['image_cond'][d](
+                    x['image_cond'], freqs['image_cond'], packed.mode_indices['image_cond'], early['image_cond'])
                 x["text"] = base.txt_mode_blocks[d](
                     x["text"], freqs["text"], packed.mode_indices["text"], early["text"]
                 )
@@ -271,24 +298,7 @@ class Flux3QDM(nn.Module):
         freqs_sm = native.rope_embed(torch.cat(id_chunks)[None])
         mods = tuple(torch.cat(c) for c in mods)
         for block in base.single_blocks:
-
-            def run(z, f, shift, scale, gate, block=block):
-                if not isinstance(block, QDMBlock):
-                    return block(z, f, bounds, (shift, scale, gate))
-                return block(
-                    z,
-                    f,
-                    bounds,
-                    (shift, scale, gate),
-                    samples=samples,
-                    alignment_callback=alignment_callback,
-                    teacher_mode=teacher,
-                )
-
-            if use_gradient_checkpointing and not teacher and torch.is_grad_enabled():
-                h = checkpoint(run, h, freqs_sm, *mods, use_reentrant=False)
-            else:
-                h = run(h, freqs_sm, *mods)
+            h = call_block(block, h, freqs_sm, bounds, mods, samples)
         image = torch.empty_like(x["image"])
         for m, a, b, start in placement:
             if m == "image":
@@ -297,7 +307,7 @@ class Flux3QDM(nn.Module):
         return base.final_layer["image"](image, vec["image"])
 
 
-def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_alpha=64, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, retain_lora=False, local_attention="halo", sliding_kernel_size=11):
+def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_alpha=64, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, retain_lora=False, local_attention="halo", sliding_kernel_size=11, replace_image_blocks=False):
     from safetensors.torch import load_file
 
     path = Path(weights_path)
@@ -314,5 +324,5 @@ def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_a
     del state
     base.to(device=device)
     model = Flux3QDM(base, region_size, qdm_layers=qdm_layers, halo=halo, attention_mode=attention_mode, memory_text_write=memory_text_write,
-                     local_attention=local_attention, sliding_kernel_size=sliding_kernel_size)
+                     local_attention=local_attention, sliding_kernel_size=sliding_kernel_size, replace_image_blocks=replace_image_blocks)
     return configure_stage(model, stage, rank=lora_rank, alpha=lora_alpha, retain_lora=retain_lora)

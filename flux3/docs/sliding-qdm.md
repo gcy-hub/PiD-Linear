@@ -1,8 +1,10 @@
 # FLUX.3 Sliding11 + QDM
 
-从原始 FLUX.3 Klein Base 初始化，替换全部 28 层联合 Attention；前面的独立图像、文本和参考图层保持原样。
+从原始 FLUX.3 Klein Base 初始化，替换前 5 层图像独立 Attention 和全部 28 层联合 Attention，共 33 层，均使用 Sliding11 + fixed4 QDM。文本独立处理层和参考图独立处理层保持原样。
 
 图像 query 使用以自身为中心、边缘截断的 11×11 图像邻域，并与有效文本 K/V 进行一次联合 Softmax。文本 query 保留全部图文 Attention。局部路径继承原始 Q/K/V/O、QK Norm 和 RoPE；CUDA 使用 FlexAttention 前向和反向，不展开邻域 K/V。
+
+前 5 层只有图像输入，因此局部分支仅关注滑动图像邻域，不添加文本输入；其 QDM 使用相同的四象限规则。后 28 层使用上述图文联合计算。两部分都纳入 A1 对齐；A2/B 的梯度和激活 checkpointing 覆盖前 5 层，B 也为它们的 Q/K/V/O 添加 LoRA。
 
 并行的 fixed4 QDM 继承现有实现：原始未旋转 QKV、K/V 全图 5×5 DWConv、SiLU、Q/K L2 normalization，四象限各自 FP32 求解 `S=B(I+A)^-1`。图像 query 读取自身象限，经过 Norm、Gate 和独立投影后与局部分支相加。QDM 不使用 RoPE，不写入文本，不扫描、不跨 timestep 保留状态。
 
@@ -35,3 +37,5 @@ bash flux3/scripts/train_flux3_sliding_qdm.sh --stop
 ```
 
 验证位于 `a1|a2|b/galleries/step_XXXXXXXXX/student/2048/`。同一实验始终使用同一输出目录。checkpoint 保存局部几何及 kernel，恢复、阶段衔接和推理都拒绝不一致的窗口配置。
+
+专用入口默认包含 `--replace-image-blocks`。底层通用入口仍默认只替换联合层，兼容旧实验；其 `--no-replace-image-blocks` 可显式恢复 28 层范围。33 层与 28 层 checkpoint 的范围标记不同，不能互相作为同阶段恢复或阶段衔接来源。当前正式实验尚未开始，仍从原始 Base 开始 A1。

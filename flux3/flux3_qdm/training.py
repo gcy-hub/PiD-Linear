@@ -50,6 +50,8 @@ def parse_args(argv=None):
     p.add_argument('--attention-mode',choices=('hybrid','local-only','memory-only'),default='hybrid')
     p.add_argument('--local-attention',choices=('halo','sliding'),default='halo')
     p.add_argument('--sliding-kernel-size',type=int,default=11)
+    p.add_argument('--replace-image-blocks',action=argparse.BooleanOptionalAction,default=False,
+                   help='Also replace all five early image blocks; text/reference blocks stay native')
     for stage in STAGES:
         p.add_argument('--'+stage+'-steps', type=int, default=0)
     p.add_argument('--memory-text-write',action='store_true',help='Write valid text K/V into each QDM bank; image memory remains NoPE')
@@ -194,12 +196,13 @@ def _run_stage(args,stage,rank,world,device):
     if world>1:
         obj=[fingerprint];dist.broadcast_object_list(obj,src=0);fingerprint=obj[0]
     metadata=dict(base_fingerprint=fingerprint,data_fingerprint=dataset.fingerprint,
-                  architecture='flux3-qdm-single28-fixed4',native_dimensions=[3072,24,128],
+                  architecture='flux3-qdm-image5-joint28-fixed4' if args.replace_image_blocks else 'flux3-qdm-single28-fixed4',native_dimensions=[3072,24,128],
                   training_policy=dict(a1_objective='image_relative_mse_v1',caption_dropout=args.caption_dropout,
                                        dit_compute=DIT_COMPUTE))
     if args.attention_mode!='hybrid':metadata['attention_mode']=args.attention_mode
     if args.memory_text_write:metadata['memory_text_write']=True
     if args.retain_lora:metadata['retain_lora']=True
+    if args.replace_image_blocks:metadata['replace_image_blocks']=True
     if args.local_attention=='sliding':
         metadata.update(local_attention='sliding',sliding_kernel_size=args.sliding_kernel_size)
     if args.qdm_layers!=list(range(28)):
@@ -212,7 +215,7 @@ def _run_stage(args,stage,rank,world,device):
         if saved is None:raise FileNotFoundError(args.resume)
     random.seed(args.seed);np.random.seed(args.seed);torch.manual_seed(args.seed);torch.cuda.manual_seed(args.seed)
     net=build_model(paths['dit'],stage,device,args.region_size,args.lora_rank,args.lora_alpha,qdm_layers=args.qdm_layers,halo=args.halo,attention_mode=args.attention_mode,memory_text_write=args.memory_text_write,retain_lora=args.retain_lora,
-                    local_attention=args.local_attention,sliding_kernel_size=args.sliding_kernel_size)
+                    local_attention=args.local_attention,sliding_kernel_size=args.sliding_kernel_size,replace_image_blocks=args.replace_image_blocks)
     blocks=list(iter_qdm_blocks(net))
     groups=optimizer_groups(net,stage)
     if not groups:raise ValueError('No trainable parameters: local-only adaptation requires --stage b (LoRA and Softmax gate)')
@@ -257,7 +260,8 @@ def _run_stage(args,stage,rank,world,device):
         atomic_json(directory/'config.json',config)
         print(json.dumps(dict(stage=stage,step=progress['stage_step'],parameters=sum(p.numel() for p in net.parameters()),
                               trainable=sum(p.numel() for p in net.parameters() if p.requires_grad),effective_batch=sampler.effective,
-                              qdm_layers=args.qdm_layers,full_attention_layers=[i for i in range(28) if i not in args.qdm_layers],halo=args.halo,attention_mode=args.attention_mode,memory_text_write=args.memory_text_write)),flush=True)
+                              qdm_layers=args.qdm_layers,full_attention_layers=[i for i in range(28) if i not in args.qdm_layers],halo=args.halo,attention_mode=args.attention_mode,memory_text_write=args.memory_text_write,
+                              replace_image_blocks=args.replace_image_blocks,replaced_attention_count=len(blocks))),flush=True)
     model=DDP(net,device_ids=[device.index],broadcast_buffers=False,find_unused_parameters=True) if world>1 and stage!='a1' else net
     tracker=None;tracking=json.loads((directory/'swanlab.json').read_text()) if (directory/'swanlab.json').exists() else {}
     if rank==0 and args.swanlab_mode!='disabled':

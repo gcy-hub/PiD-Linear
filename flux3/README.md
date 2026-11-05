@@ -34,7 +34,7 @@ GPU IDs are configurable. Preparation uses the current process's logical CUDA ID
 
 ## Sliding11 + QDM
 
-28 层联合 Attention 的 Sliding Softmax + QDM 三阶段训练、后台续训与验证见 [运行说明](docs/sliding-qdm.md)。默认 A1 200 步、A2 400 步、B 10000 步，每 200 步生成 10 张学生 2K 图像。
+前 5 层图像独立 Attention 和后 28 层联合 Attention（共 33 层）的 Sliding Softmax + QDM 三阶段训练、后台续训与验证见 [运行说明](docs/sliding-qdm.md)。默认 A1 200 步、A2 400 步、B 10000 步，每 200 步生成 10 张学生 2K 图像。
 
 ## Weights
 

@@ -11,6 +11,8 @@ from torch.nn import functional as F
 
 
 def validate_local_attention(saved, current):
+    if saved.get('replace_image_blocks', False) != current.get('replace_image_blocks', False):
+        raise ValueError('Checkpoint early image block replacement scope mismatch')
     old, new = saved.get('local_attention', 'halo'), current.get('local_attention', 'halo')
     if old != new:
         raise ValueError('Checkpoint local attention geometry mismatch')

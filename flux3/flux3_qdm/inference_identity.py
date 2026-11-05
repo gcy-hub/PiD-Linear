@@ -28,7 +28,7 @@ def validate_checkpoint_identity(checkpoint,base_path,config,state=None):
     saved=state.get('config',{})
     from .sliding import validate_local_attention
     validate_local_attention(saved,config)
-    if config.get('local_attention','halo')=='sliding':
+    if config.get('local_attention','halo')=='sliding' or config.get('replace_image_blocks',False):
         validate_local_attention(state.get('metadata',{}),config)
     from .model import normalize_qdm_layers
     layout=normalize_qdm_layers(config.get('qdm_layers'))
@@ -47,7 +47,8 @@ def validate_checkpoint_identity(checkpoint,base_path,config,state=None):
         raise ValueError('Checkpoint lacks the required base fingerprint')
     architecture=metadata.get('architecture')
     dimensions=metadata.get('native_dimensions')
-    if architecture!='flux3-qdm-single28-fixed4' or dimensions!=[3072,24,128]:
+    expected_architecture='flux3-qdm-image5-joint28-fixed4' if config.get('replace_image_blocks',False) else 'flux3-qdm-single28-fixed4'
+    if architecture!=expected_architecture or dimensions!=[3072,24,128]:
         raise ValueError('Checkpoint native architecture metadata is incompatible')
     cache_path=checkpoint.parents[2]/'base_fingerprint.json'
     # Concurrent evaluation workers share one fallback hash, rather than reread

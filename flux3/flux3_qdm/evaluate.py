@@ -291,7 +291,8 @@ def _worker_batch(args, tasks):
                                qdm_layers=config.get('qdm_layers'),halo=config.get('halo',0),
                                attention_mode=config.get('attention_mode','hybrid'),
                                memory_text_write=config.get('memory_text_write',False),retain_lora=config.get('retain_lora',False),
-                               local_attention=config.get('local_attention','halo'),sliding_kernel_size=config.get('sliding_kernel_size',11))
+                               local_attention=config.get('local_attention','halo'),sliding_kernel_size=config.get('sliding_kernel_size',11),
+                               replace_image_blocks=config.get('replace_image_blocks',False))
         load_delta(pipe.dit,torch.load(args.checkpoint/'delta.pt',map_location='cpu',weights_only=False),strict=True)
         pipe.dit.eval()
         with torch.inference_mode():
