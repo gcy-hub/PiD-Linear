@@ -9,6 +9,6 @@ exec bash flux3/scripts/train_flux3_qdm_repeat.sh \
   --output-root "${FLUX3_QDM_RUN:-outputs/flux3-sliding11-qdm-2k-node01}" \
   --local-attention sliding --sliding-kernel-size 11 --attention-mode hybrid --replace-image-blocks \
   --training-subset-size 20000 \
-  --a1-steps 200 --a2-steps 400 --b-steps 10000 \
-  --batch-size 2 --grad-accum 1 --save-steps 25 --validation-steps 200 \
+  --a1-steps 500 --a2-steps 1000 --b-steps 10000 \
+  --batch-size 2 --grad-accum 1 --save-steps 500 --validation-steps 500 \
   --workers 4 --threads 1 --resume auto "$@"
