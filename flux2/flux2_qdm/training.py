@@ -38,7 +38,8 @@ def parse_args(argv=None):
     p.add_argument('--weights-root',default=os.getenv('FLUX2_WEIGHTS_ROOT',str(Path.home()/'huggingface_ckpts/FLUX.2-klein-base-4B')))
     dataset=Path.home()/'dataset/CLEAR-FLUX2-klein-base-4B-10K'
     p.add_argument('--subset-root',default=os.getenv('FLUX2_SUBSET_ROOT',str(dataset)))
-    p.add_argument('--cache-root',default=os.getenv('FLUX2_CACHE_ROOT',str(dataset/'flux2_qdm_cache')))
+    p.add_argument('--cache-root',default=os.getenv('FLUX2_CACHE_ROOT',str(dataset/'flux2_qdm_cache_1k')))
+    p.add_argument('--resolution',type=int,choices=(1024,2048),default=1024)
     p.add_argument('--output-root',default='outputs/flux2-qdm')
     p.add_argument('--resume',default='auto')
     p.add_argument('--init-from',default='')
@@ -186,6 +187,7 @@ def _run_stage(args,stage,rank,world,device):
     stop=directory/'STOP'
     if stop.exists():return False
     dataset=CachedDataset(args.subset_root,args.cache_root,settings['subset'],limit=args.sample_limit)
+    if dataset.manifest['image'].get('resolution',2048)!=args.resolution:raise ValueError('Training resolution and latent cache disagree')
     sampler=GlobalSampler(dataset.bucket_indices,args.batch_size,world,args.grad_accum,args.seed)
     config={**vars(args),'stage':stage,'effective_batch':sampler.effective,'world_size':world,'settings':settings}
     paths=resource_paths(args.weights_root)
@@ -201,7 +203,7 @@ def _run_stage(args,stage,rank,world,device):
         obj=[fingerprint];dist.broadcast_object_list(obj,src=0);fingerprint=obj[0]
     metadata=dict(base_fingerprint=fingerprint,data_fingerprint=dataset.fingerprint,
                   architecture='flux2-klein-base4b-double5-single20-sliding-fixed4',native_dimensions=[3072,24,128],
-                  training_policy=dict(a1_objective='image_relative_mse_v1',caption_dropout=args.caption_dropout,
+                  training_policy=dict(resolution=args.resolution,a1_objective='image_relative_mse_v1',caption_dropout=args.caption_dropout,
                                        dit_compute=DIT_COMPUTE))
     if args.attention_mode!='hybrid':metadata['attention_mode']=args.attention_mode
     if args.memory_text_write:metadata['memory_text_write']=True

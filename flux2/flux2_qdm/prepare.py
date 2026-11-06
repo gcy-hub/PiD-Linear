@@ -1,4 +1,4 @@
-"""Resumable multi-GPU FLUX.2-native text/2K VAE encoding, without CPU offload."""
+"""Resumable multi-GPU FLUX.2-native text/VAE encoding, without CPU offload."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import gc
@@ -12,7 +12,7 @@ import time
 import numpy as np
 import torch
 from tqdm import tqdm
-from .data import initialize_index,cache_path,valid,atomic_tensor,prepare_image,image_ids,prompt_ids
+from .data import initialize_index,cache_path,valid,atomic_tensor,prepare_image,image_ids,prompt_ids,cache_identity
 from .checkpoint import atomic_json
 from .prompts import THEMES
 
@@ -23,11 +23,11 @@ def worker(args):
     torch.set_num_threads(args.threads);torch.cuda.set_device(0)
     start=time.monotonic();stop=[False]
     for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,lambda *_:stop.__setitem__(0,True))
-    interrupted=lambda:stop[0] or time.monotonic()-start>=args.max_seconds
-    manifest=json.loads((Path(args.cache_root)/'manifest.json').read_text());identity=manifest['fingerprint']
+    interrupted=lambda:stop[0] or time.monotonic()-start>=args.max_seconds or (args.stop_file and Path(args.stop_file).exists())
+    manifest=json.loads((Path(args.cache_root)/'manifest.json').read_text());identity=manifest['fingerprint'];text_identity=cache_identity(manifest,'text')
     rows=manifest['rows'];texts=list(dict.fromkeys(['']+[r['caption'] for r in rows]+[prompt for _,prompt in THEMES]))
     texts=texts[args.worker_index::args.worker_count];assigned=rows[args.worker_index::args.worker_count]
-    pending=[s for s in texts if not valid(cache_path(args.cache_root,'text',s),identity)]
+    pending=[s for s in texts if not valid(cache_path(args.cache_root,'text',s),text_identity)]
     if pending and not interrupted():
         encoder=Qwen3ForCausalLM.from_pretrained(args.weights_root,subfolder='text_encoder',torch_dtype=torch.bfloat16,local_files_only=True).to('cuda')
         tokenizer=Qwen2TokenizerFast.from_pretrained(args.weights_root,subfolder='tokenizer',local_files_only=True)
@@ -38,7 +38,7 @@ def worker(args):
                 with torch.inference_mode():
                     embeds=Flux2KleinPipeline._get_qwen3_prompt_embeds(encoder,tokenizer,batch,device='cuda',dtype=torch.bfloat16)
                 for caption,feature in zip(batch,embeds):
-                    atomic_tensor(cache_path(args.cache_root,'text',caption),dict(prompt_tokens=feature,prompt_ids=prompt_ids(len(feature))),identity)
+                    atomic_tensor(cache_path(args.cache_root,'text',caption),dict(prompt_tokens=feature,prompt_ids=prompt_ids(len(feature))),text_identity)
                 bar.update(len(batch))
         del encoder,tokenizer;gc.collect();torch.cuda.empty_cache()
     pending=[r for r in assigned if not valid(cache_path(args.cache_root,'image',r['id']),identity)]
@@ -71,14 +71,17 @@ def worker(args):
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--weights-root',required=True);p.add_argument('--dataset-root',required=True)
+    p.add_argument('--resolution',type=int,choices=(1024,2048),default=1024)
+    p.add_argument('--reuse-text-cache',default=os.getenv('FLUX2_TEXT_CACHE_SOURCE'))
+    p.add_argument('--stop-file',default='')
     p.add_argument('--cache-root',required=True);p.add_argument('--gpu-ids',default=os.getenv('GPU_IDS','0'))
     p.add_argument('--workers',type=int,default=4);p.add_argument('--threads',type=int,default=1)
     p.add_argument('--text-batch-size',type=int,default=4);p.add_argument('--max-seconds',type=float,default=1200)
     p.add_argument('--worker-index',type=int);p.add_argument('--worker-count',type=int)
     args=p.parse_args(argv)
     if args.worker_index is not None:return worker(args)
-    manifest=initialize_index(args.dataset_root,args.cache_root,args.weights_root)
-    print(f'FLUX.2 dataset: {len(manifest["rows"])} completed image/caption pairs; native 2K cache',flush=True)
+    manifest=initialize_index(args.dataset_root,args.cache_root,args.weights_root,args.resolution,args.reuse_text_cache)
+    print(f'FLUX.2 dataset: {len(manifest["rows"])} completed image/caption pairs; native {args.resolution}px cache',flush=True)
     children=[];root=Path(args.cache_root);(root/'logs').mkdir(exist_ok=True)
     ids=args.gpu_ids.split(',')
     try:
@@ -86,12 +89,13 @@ def main(argv=None):
             command=[sys.executable,'-m','flux2_qdm.prepare','--weights-root',args.weights_root,
                 '--dataset-root',args.dataset_root,'--cache-root',args.cache_root,'--workers',str(args.workers),
                 '--threads',str(args.threads),'--text-batch-size',str(args.text_batch_size),
-                '--worker-index',str(i),'--worker-count',str(len(ids)),'--max-seconds',str(args.max_seconds)]
+                '--worker-index',str(i),'--worker-count',str(len(ids)),'--max-seconds',str(args.max_seconds),
+                '--stop-file',args.stop_file]
             with (root/'logs'/f'worker_{i}.log').open('a') as log:
                 children.append(subprocess.Popen(command,env={**os.environ,'CUDA_VISIBLE_DEVICES':gpu},stdout=log,stderr=subprocess.STDOUT))
         codes=[child.wait() for child in children]
         if any(code not in (0,75) for code in codes):raise RuntimeError(f'Cache preparation failed: {codes}; see {root}/logs')
-        complete=all(valid(cache_path(root,'text',caption),manifest['fingerprint']) for caption in ['']+[r['caption'] for r in manifest['rows']]+[prompt for _,prompt in THEMES]) and all(valid(cache_path(root,'image',r['id']),manifest['fingerprint']) for r in manifest['rows'])
+        complete=all(valid(cache_path(root,'text',caption),cache_identity(manifest,'text')) for caption in ['']+[r['caption'] for r in manifest['rows']]+[prompt for _,prompt in THEMES]) and all(valid(cache_path(root,'image',r['id']),manifest['fingerprint']) for r in manifest['rows'])
         if complete:atomic_json(root/'complete.json',dict(fingerprint=manifest['fingerprint'],samples=len(manifest['rows'])))
         return 0 if complete else 75
     finally:

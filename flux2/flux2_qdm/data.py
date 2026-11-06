@@ -11,6 +11,15 @@ from .checkpoint import atomic_json
 BUCKETS_2K=((2048,2048),(2304,1728),(1728,2304),(2688,1536),(1536,2688),(2688,1792),(1792,2688))
 
 
+def buckets_for(resolution):
+    if resolution not in (1024,2048):raise ValueError('Supported training resolution: 1024 or 2048')
+    return tuple((w*resolution//2048,h*resolution//2048) for w,h in BUCKETS_2K)
+
+
+def cache_identity(manifest,kind):
+    return manifest.get('text_identity',manifest['fingerprint']) if kind=='text' else manifest['fingerprint']
+
+
 def fingerprint(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
 
@@ -38,7 +47,7 @@ def prepare_image(path,size):
         return image.crop((x,y,x+w,y+h))
 
 
-def initialize_index(dataset_root,cache_root,weights_root):
+def initialize_index(dataset_root,cache_root,weights_root,resolution=1024,reuse_text_cache=None):
     dataset_root=Path(dataset_root).resolve();root=Path(cache_root).resolve()
     root.mkdir(parents=True,exist_ok=True)
     target=root/'manifest.json'
@@ -46,14 +55,29 @@ def initialize_index(dataset_root,cache_root,weights_root):
         manifest=json.loads(target.read_text())
         if manifest['model']!=model_identity(weights_root):raise ValueError('FLUX2 model changed; use a new cache root')
         if manifest['dataset_root']!=str(dataset_root):raise ValueError('Dataset root changed')
+        if manifest['image'].get('resolution',2048)!=resolution:raise ValueError('Cache resolution changed; use a separate cache root')
         return manifest
+    buckets=buckets_for(resolution)
     rows=[];skipped=[]
-    for record in json.loads((dataset_root/'prompts.json').read_text()):
+    previous=json.loads((Path(reuse_text_cache)/'manifest.json').read_text()) if reuse_text_cache else None
+    if previous:
+        if previous['dataset_root']!=str(dataset_root) or previous['model']!=model_identity(weights_root):
+            raise ValueError('Text cache source uses different model/data')
+        # Reuse the immutable image/caption selection; do not add newly generated
+        # files to an experiment when changing only its resolution.
+        old_resolution=previous['image'].get('resolution',2048)
+        for row in previous['rows']:
+            size=[v*resolution//old_resolution for v in row['size']]
+            rows.append(dict(row,size=size,bucket=f'{size[0]}x{size[1]}'))
+        skipped=previous.get('skipped',[])
+        records=[]
+    else:records=json.loads((dataset_root/'prompts.json').read_text())
+    for record in records:
         key=str(record['id']);image=dataset_root/'images'/f'{key}.png'
         if not image.is_file():continue # interrupted generation is not a training sample
         try:
             with Image.open(image) as im:w,h=im.size
-            size=min(BUCKETS_2K,key=lambda s:abs(__import__('math').log((w/h)/(s[0]/s[1]))))
+            size=min(buckets,key=lambda s:abs(__import__('math').log((w/h)/(s[0]/s[1]))))
             if not record['prompt'].strip():raise ValueError('empty caption')
             rows.append(dict(id=key,caption=record['prompt'],image_path=str(image),size=list(size),
                              bucket=f'{size[0]}x{size[1]}',source=file_identity(image)))
@@ -61,7 +85,16 @@ def initialize_index(dataset_root,cache_root,weights_root):
     if not rows:raise ValueError('No completed images in the requested dataset')
     manifest=dict(schema=1,dataset_root=str(dataset_root),model=model_identity(weights_root),
                   rows=rows,skipped=skipped,text=dict(native='Flux2KleinPipeline',layers=[9,18,27],length=512),
-                  image=dict(buckets=BUCKETS_2K,vae='native mode, 2x2 packing, BN normalization',dtype='bfloat16'))
+                  image=dict(resolution=resolution,buckets=buckets,vae='native mode, 2x2 packing, BN normalization',dtype='bfloat16'))
+    if previous:
+        manifest['text_identity']=cache_identity(previous,'text')
+        manifest['text_cache_source']=str(Path(reuse_text_cache).resolve())
+        source=(Path(reuse_text_cache)/'text').resolve()
+        if not source.is_dir():raise FileNotFoundError(source)
+        link=root/'text'
+        if link.exists() or link.is_symlink():
+            if link.resolve()!=source:raise ValueError('Text cache link points to a different source')
+        else:link.symlink_to(source,target_is_directory=True)
     manifest['fingerprint']=fingerprint(manifest)
     atomic_json(target,manifest)
     return manifest
@@ -106,7 +139,7 @@ class CachedDataset:
             if done.get('fingerprint')!=self.fingerprint or done.get('samples')!=len(self.rows):
                 raise ValueError('Cache completion identity mismatch')
         null=cache_path(self.root,'text','')
-        if not valid(null,self.fingerprint):raise FileNotFoundError('Missing empty prompt cache')
+        if not valid(null,cache_identity(self.manifest,'text')):raise FileNotFoundError('Missing empty prompt cache')
         self.empty_prompt=torch.load(null,weights_only=True)
         self.bucket_indices=defaultdict(list)
         for i,row in enumerate(self.rows):self.bucket_indices[row['bucket']].append(i)
@@ -117,7 +150,7 @@ class CachedDataset:
         row=self.rows[index]
         if file_identity(row['image_path'])!=row['source']:raise ValueError(f'Source image changed: {row["id"]}')
         for kind,key in [('image',row['id']),('text',row['caption'])]:
-            if not valid(cache_path(self.root,kind,key),self.fingerprint):raise RuntimeError(f'Missing/stale native FLUX.2 {kind} cache for {row["id"]}')
+            if not valid(cache_path(self.root,kind,key),cache_identity(self.manifest,kind)):raise RuntimeError(f'Missing/stale native FLUX.2 {kind} cache for {row["id"]}')
         image=torch.load(cache_path(self.root,'image',row['id']),weights_only=True)
         text=torch.load(cache_path(self.root,'text',row['caption']),weights_only=True)
         return dict(id=row['id'],**image,**text)

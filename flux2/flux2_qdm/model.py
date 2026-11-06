@@ -124,9 +124,10 @@ class HybridAttention(nn.Module):
         else:
             reorder=lambda z:torch.cat((z[:,t:],z[:,:t]),1).transpose(1,2)
             vals=[]
+            qr,kr,vr=reorder(qrope),reorder(krope),reorder(v)
             for batch in range(q.shape[0]):
-                z=sliding_joint_attention(reorder(qrope)[batch:batch+1],reorder(krope)[batch:batch+1],
-                    reorder(v)[batch:batch+1],info.grid,t,self.kernel_size).transpose(1,2)
+                z=sliding_joint_attention(qr[batch:batch+1],kr[batch:batch+1],
+                    vr[batch:batch+1],info.grid,t,self.kernel_size).transpose(1,2)
                 vals.append(torch.cat((z[:,-t:] if t else z[:,:0],z[:,:-t] if t else z),1))
             out=torch.cat(vals,0)
         return out,(q[:,t:],k[:,t:],v[:,t:]),mlp
@@ -194,12 +195,20 @@ class Flux2QDM(nn.Module):
         return self.base(**kwargs,joint_attention_kwargs=options)
 
     def forward(self,packed,use_gradient_checkpointing=False,alignment_callback=None):
-        output=[]
+        first=packed.items[0]
         for sample in packed.items:
-            result=self.native_forward(**sample,use_gradient_checkpointing=use_gradient_checkpointing,
-                alignment_callback=alignment_callback,return_dict=False)[0]
-            output.append(result[0])
-        return torch.cat(output)
+            if tuple(sample['grid'])!=tuple(first['grid']) or sample['encoder_hidden_states'].shape[1:]!=first['encoder_hidden_states'].shape[1:]:
+                raise ValueError('A batch must share its image bucket and native text length')
+            if not torch.equal(sample['img_ids'],first['img_ids']) or not torch.equal(sample['txt_ids'],first['txt_ids']):
+                raise ValueError('Batched native position IDs must agree')
+        # The full native batch reaches each A1 callback once. Relative MSE then
+        # normalizes by the entire batch energy instead of summing bs losses.
+        batch={key:torch.cat([s[key] for s in packed.items],0)
+               for key in ('hidden_states','encoder_hidden_states','timestep')}
+        batch.update(grid=first['grid'],img_ids=first['img_ids'],txt_ids=first['txt_ids'])
+        result=self.native_forward(**batch,use_gradient_checkpointing=use_gradient_checkpointing,
+            alignment_callback=alignment_callback,return_dict=False)[0]
+        return result.flatten(0,1)
 
 
 @contextmanager

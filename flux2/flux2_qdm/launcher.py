@@ -114,7 +114,7 @@ def run(args,argv,child=run_owned,clock=time.monotonic):
                          '--stage',stage,'--stage-root',str(root/stage),
                          '--output-root',str(root/stage/'galleries'/f'step_{step:09d}'),
                          '--weights-root',args.weights_root,'--gpu-ids',gpu_ids,
-                         '--workers',str(args.workers),'--threads',str(args.threads),'--student-only','--resolutions','2048','--resume',
+                         '--workers',str(args.workers),'--threads',str(args.threads),'--student-only','--resolutions',str(args.resolution),'--resume',
                          '--max-seconds',str(budget or 1200)]
                 code=child(command,env)
                 if code:
@@ -157,7 +157,8 @@ def main(argv=None):
         command=[sys.executable,'-m','flux2_qdm.prepare','--dataset-root',args.subset_root,
                  '--cache-root',args.cache_root,'--weights-root',args.weights_root,
                  '--gpu-ids',os.getenv('GPU_IDS','0'),'--workers',str(args.workers),
-                 '--threads',str(args.threads),'--max-seconds',str(budget)]
+                 '--threads',str(args.threads),'--resolution',str(args.resolution),'--max-seconds',str(budget),
+                 '--stop-file',str(Path(args.output_root)/('a1' if args.stage=='all' else args.stage)/'STOP')]
         code=run_owned(command,dict(os.environ))
         if code:return code
     if args.max_seconds:

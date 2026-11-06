@@ -177,7 +177,7 @@ def training_command(root, stage, request):
             "--stage-root", str(root / stage), "--output-root", str(root / stage / "galleries" / f"step_{step:09d}"),
             "--gpu-ids", request.get("gpu_ids", "0"), "--workers", str(saved.get("workers", 4)),
             "--threads", str(saved.get("threads", 1)), "--weights-root", saved["weights_root"],
-            "--student-only", "--resolutions", "2048",
+            "--student-only", "--resolutions", str(saved.get("resolution",2048)),
             "--max-seconds", str(math.ceil(request["cycle_seconds"])), "--resume",
         ]
     return [

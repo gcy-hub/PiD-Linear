@@ -1,4 +1,4 @@
-"""Ten student-only native FLUX.2 2K samples, resuming denoising and image tasks."""
+"""Ten student-only native FLUX.2 samples, resuming denoising and image tasks."""
 import argparse
 import json
 import os
@@ -23,7 +23,7 @@ def worker(args):
     for sig in (signal.SIGTERM,signal.SIGINT):signal.signal(sig,lambda *_:stopping.__setitem__(0,True))
     torch.set_num_threads(args.threads);torch.cuda.set_device(0)
     state=read_checkpoint(args.checkpoint);cfg=state['config']
-    root=Path(args.output_root);folder=root/'student'/'2048';folder.mkdir(parents=True,exist_ok=True)
+    root=Path(args.output_root);folder=root/'student'/args.resolutions;folder.mkdir(parents=True,exist_ok=True)
     tasks=[(i,name,prompt) for i,(name,prompt) in enumerate(THEMES) if i%args.worker_count==args.worker_index and not (folder/f'{name}.done.json').exists()]
     if not tasks:return 0
     model=build_model(args.weights_root,args.stage,'cuda',sliding_kernel_size=cfg['sliding_kernel_size'],
@@ -38,13 +38,13 @@ def worker(args):
     for index,name,prompt in tasks:
         if stopped():return 75
         identity=fingerprint(dict(checkpoint=str(Path(args.checkpoint).resolve()),prompt=prompt,seed=PROMPT_SEED+index,
-                                  steps=args.steps,cfg=args.cfg,resolution=2048,kernel=cfg['sliding_kernel_size']))
+                                  steps=args.steps,cfg=args.cfg,resolution=int(args.resolutions),kernel=cfg['sliding_kernel_size']))
         condition=torch.load(cache_path(cfg['cache_root'],'text',prompt),weights_only=True)
         text=condition['prompt_tokens'][None].to('cuda');txt=condition['prompt_ids'].to('cuda')
         saved_path=folder/f'{name}.pt'
         saved=torch.load(saved_path,weights_only=True) if saved_path.exists() else {}
         if saved and saved['identity']!=identity:raise ValueError('Evaluation settings changed; use a new output directory')
-        z,ids=pipe.prepare_latents(1,32,2048,2048,torch.bfloat16,'cuda',torch.Generator('cpu').manual_seed(PROMPT_SEED+index))
+        z,ids=pipe.prepare_latents(1,32,int(args.resolutions),int(args.resolutions),torch.bfloat16,'cuda',torch.Generator('cpu').manual_seed(PROMPT_SEED+index))
         next_step=int(saved.get('next_step',0))
         if saved:z=saved['latents'].to('cuda')
         scheduler.set_timesteps(args.steps,device='cuda',sigmas=np.linspace(1.,1/args.steps,args.steps),
@@ -55,9 +55,9 @@ def worker(args):
             for step in range(next_step,args.steps):
                 t=scheduler.timesteps[step]
                 with dit_autocast():
-                    pos=model.native_forward(grid=(128,128),hidden_states=z,encoder_hidden_states=text,
+                    pos=model.native_forward(grid=(int(args.resolutions)//16,int(args.resolutions)//16),hidden_states=z,encoder_hidden_states=text,
                         timestep=t.reshape(1)/1000,img_ids=ids,txt_ids=txt,return_dict=False)[0]
-                    neg=model.native_forward(grid=(128,128),hidden_states=z,encoder_hidden_states=null,
+                    neg=model.native_forward(grid=(int(args.resolutions)//16,int(args.resolutions)//16),hidden_states=z,encoder_hidden_states=null,
                         timestep=t.reshape(1)/1000,img_ids=ids,txt_ids=txt,return_dict=False)[0]
                 pred=neg+args.cfg*(pos-neg)
                 z=scheduler.step(pred,t,z,return_dict=False)[0].to(torch.bfloat16)
@@ -85,11 +85,11 @@ def main(argv=None):
     p.add_argument('--stage',required=True,choices=('a1','a2','b'));p.add_argument('--gpu-ids',default=os.getenv('GPU_IDS','0'))
     p.add_argument('--workers',type=int,default=4);p.add_argument('--threads',type=int,default=1)
     p.add_argument('--steps',type=int,default=50);p.add_argument('--cfg',type=float,default=4.)
-    p.add_argument('--max-seconds',type=float,default=1200);p.add_argument('--resolutions',default='2048')
+    p.add_argument('--max-seconds',type=float,default=1200);p.add_argument('--resolutions',default='1024')
     p.add_argument('--student-only',action='store_true');p.add_argument('--resume',action='store_true')
     p.add_argument('--worker-index',type=int);p.add_argument('--worker-count',type=int)
     args=p.parse_args(argv)
-    if args.resolutions!='2048':p.error('This experiment validates 2048x2048')
+    if args.resolutions not in ('1024','2048'):p.error('Validate one resolution: 1024 or 2048')
     if args.worker_index is not None:return worker(args)
     root=Path(args.output_root);root.mkdir(parents=True,exist_ok=True)
     children=[];ids=args.gpu_ids.split(',')
@@ -102,7 +102,7 @@ def main(argv=None):
                     env={**os.environ,'CUDA_VISIBLE_DEVICES':gpu},stdout=log,stderr=subprocess.STDOUT))
         codes=[child.wait() for child in children]
         if any(code not in (0,75) for code in codes):raise RuntimeError(f'Evaluation failed {codes}; see {root}/worker_*.log')
-        if not all((root/'student/2048'/f'{name}.done.json').exists() for name,_ in THEMES):return 75
+        if not all((root/'student'/args.resolutions/f'{name}.done.json').exists() for name,_ in THEMES):return 75
         marker=dict(checkpoint=str(Path(args.checkpoint).resolve()),stage=args.stage,samples=10,evaluation=str(root))
         stage=Path(args.stage_root);atomic_json(root/'complete.json',marker)
         step=int(json.loads((Path(args.checkpoint)/'complete.json').read_text())['step'])
@@ -115,7 +115,7 @@ def main(argv=None):
             tracking=json.loads((stage/'swanlab.json').read_text())
             run=swanlab.init(project='FLUX2-QDM',name=args.stage,id=tracking['run_id'],resume=True,
                 mode='online' if config['swanlab_mode']=='cloud' else config['swanlab_mode'],log_dir=str(stage/'swanlog'))
-            run.log({f'validation/{name}':swanlab.Image(str(root/'student/2048'/f'{name}.png')) for name,_ in THEMES},step=read_checkpoint(args.checkpoint)['progress']['total_step'])
+            run.log({f'validation/{name}':swanlab.Image(str(root/'student'/args.resolutions/f'{name}.png')) for name,_ in THEMES},step=read_checkpoint(args.checkpoint)['progress']['total_step'])
             run.finish()
         return 0
     finally:
