@@ -73,12 +73,12 @@ and twenty single-layer repeats are measured after warmup. Startup is separate.
 
 ```bash
 conda activate linear-pid
-export CHECKPOINT=./outputs/pid-vdn/a2/checkpoints/<completed-checkpoint>
+export CHECKPOINT=./../experiment/pid-vdn/a2/checkpoints/<completed-checkpoint>
 export PID_WEIGHTS_ROOT=./weights
 export PID_INDEX_ROOT=./dataset/MultiAspect-4K-1M/linear_pid_index
 export PID_TEXT_CACHE_ROOT=./dataset/MultiAspect-4K-1M/linear_pid_text_cache
-export PID_GALLERY_ROOT=./outputs/linear-pid/assets
-export MEMORY_RESULTS=./outputs/research/spatial-delta-memory
+export PID_GALLERY_ROOT=./../experiment/linear-pid/assets
+export MEMORY_RESULTS=./../experiment/research/spatial-delta-memory
 
 # GPU IDs, workers and CPU threads are configurable. Multiple GPUs split images.
 GPU_IDS=0,1 CPU_THREADS=1 bash scripts/diagnose_spatial_delta_memory.sh \
@@ -128,19 +128,19 @@ export PID_VDN_SUBSET_ROOT=./dataset/MultiAspect-4K-1M/pid_vdn_subsets
 
 # Two GPUs, effective batch 8 = 2 GPUs x batch 1 x accumulation 4.
 # The launcher detaches itself, saves/restarts each cycle and stops after A1.
-GPU_IDS=0,1 CPU_THREADS=1 bash scripts/train_pid_vdn_repeat.sh \
+GPU_IDS=0,1 CPU_THREADS=1 bash scripts/train_adapt.sh --config configs/training/pid-vdn.json --mode repeat \
   --stage a1 --memory-mode fixed4 --region-size 8 \
   --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
   --text-cache-root "$PID_TEXT_CACHE_ROOT" --subset-root "$PID_VDN_SUBSET_ROOT" \
-  --gallery-root "$PID_GALLERY_ROOT" --output-root outputs/pid-vdn-fixed4 \
+  --gallery-root "$PID_GALLERY_ROOT" --output-root ../experiment/pid-vdn-fixed4 \
   --batch-size 1 --grad-accum 4 --effective-batch 8 \
   --max-steps 500 --save-steps 50 --log-steps 1 \
   --workers 2 --threads 1 --swanlab-mode offline \
   --cycle-seconds 1200 --grace-seconds 180
 
 # The same command resumes an interrupted run. Status and logs:
-python -m scripts.repeat_pid_vdn --status --output-root outputs/pid-vdn-fixed4
-tail -f outputs/pid-vdn-fixed4/repeat/latest-training.log
+python -m scripts.repeat_pid_vdn --status --output-root ../experiment/pid-vdn-fixed4
+tail -f ../experiment/pid-vdn-fixed4/repeat/latest-training.log
 ```
 
 Each cycle completes an optimizer update, saves full state and exits; a fresh

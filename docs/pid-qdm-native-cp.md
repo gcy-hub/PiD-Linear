@@ -31,7 +31,7 @@ export PID_GALLERY_ROOT=/path/to/prepared-gallery-assets
 ```bash
 GPU_IDS=2,3 CPU_THREADS=1 CUDA_LAUNCH_BLOCKING=0 \
 PYTORCH_ALLOC_CONF=expandable_segments:True \
-bash scripts/train_pid_vdn.sh \
+bash scripts/train_adapt.sh \
   --stage all --resume auto \
   --memory-mode fixed4 --region-size 8 --local-mode halo --local-halo 2 \
   --context-parallel-size 2 \
@@ -42,7 +42,7 @@ bash scripts/train_pid_vdn.sh \
   --attention-batch-chunk 1 --workers 2 --threads 1 \
   --validation-resolution 4096 \
   --validation-cases generated_010,generated_029,generated_003,generated_009,generated_019,generated_022,real_011,real_028 \
-  --output-root outputs/pid-qdm-halo2-native-cp2
+  --output-root ../experiment/pid-qdm-halo2-native-cp2
 ```
 
 中断后重复同一命令恢复。也可以单独选择 `--stage a1|a2|b`，以 `--max-steps` 设置阶段总步数。阶段切换加载上一阶段权重，重建优化器；同阶段恢复完整训练状态。原生分桶与之前强制 4096 的训练配置不同，应使用独立输出目录。

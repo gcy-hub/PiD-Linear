@@ -46,12 +46,12 @@ CHECK
     continue
   fi
   effective=$(( QDM_WORLD * batch * accum ))
-  command=(bash "$REPO_ROOT/scripts/train_pid_vdn.sh" "${common[@]}"
+  command=(bash "$REPO_ROOT/scripts/train_adapt.sh" "${common[@]}"
            --stage "$stage" --batch-size "$batch" --grad-accum "$accum" --effective-batch "$effective"
            --max-steps "$steps" --save-steps "$save" --validation-steps "$validate" "$@")
   echo "Starting $stage: per-GPU batch=$batch accum=$accum world=$QDM_WORLD effective=$effective steps=$steps"
   if [[ "${PID_QDM_DRY_RUN:-0}" == 1 ]]; then
-    WORLD_SIZE="$QDM_WORLD" python -m scripts.train_pid_vdn "${common[@]}" \
+    WORLD_SIZE="$QDM_WORLD" python -m pid._src.vdn_pid.training "${common[@]}" \
       --stage "$stage" --batch-size "$batch" --grad-accum "$accum" --effective-batch "$effective" \
       --max-steps "$steps" --save-steps "$save" --validation-steps "$validate" --dry-run
     continue

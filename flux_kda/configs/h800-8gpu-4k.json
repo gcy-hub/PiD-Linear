@@ -3,7 +3,7 @@
   "weights": "weights/flux-3-image-klein-base/model.safetensors",
   "resources": "weights",
   "subset_root": "dataset/pid-vdn-80k",
-  "output": "outputs/flux3-kda-4k",
+  "output": "../experiment/flux3-kda-4k",
   "data_mode": "online",
   "max_resolution": 4096,
   "gpus": 8,

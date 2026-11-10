@@ -259,7 +259,7 @@ def main():
     p.add_argument("--warmup", type=int, default=3)
     p.add_argument("--repeats", type=int, default=20)
     p.add_argument("--backward-repeats", type=int, default=5)
-    p.add_argument("--output-root", default="outputs/pid-vdn/benchmark")
+    p.add_argument("--output-root", default="../experiment/pid-vdn/benchmark")
     p.add_argument("--threads", type=int, default=1)
     p.add_argument("--diagnostics", action="store_true")
     p.add_argument("--components", nargs="+", default=["full", "local", "vda", "hybrid"])

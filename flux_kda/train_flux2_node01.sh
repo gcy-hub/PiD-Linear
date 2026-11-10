@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
 export OMP_NUM_THREADS=4
 PYTHON="${PYTHON:-python}"
-OUTPUT="${1:-outputs/flux2-stock-kda-clear-node01-bs2}"
+OUTPUT="${1:-../experiment/flux2-stock-kda-clear-node01-bs2}"
 WEIGHTS="${WEIGHTS:-weights/FLUX.2-klein-base-4B}"
 DATA="${DATA:-dataset/CLEAR-FLUX2-klein-base-4B-10K}"
 mkdir -p "$OUTPUT"
@@ -33,8 +33,8 @@ for boundary in 1 2 300 600 900 1000; do
     validation="$OUTPUT/validation/step-$boundary"
     if [[ -f "$validation/kda.json" ]]; then continue; fi
     mkdir -p "$validation"
-    if [[ -f outputs/stock-kda-speed/flux2-2k/conditions.pt ]]; then
-        cp outputs/stock-kda-speed/flux2-2k/conditions.pt "$validation/conditions.pt"
+    if [[ -f ../experiment/stock-kda-speed/flux2-2k/conditions.pt ]]; then
+        cp ../experiment/stock-kda-speed/flux2-2k/conditions.pt "$validation/conditions.pt"
     fi
     CUDA_VISIBLE_DEVICES=1 "$PYTHON" -m flux_kda.benchmark --family flux2 \
         --weights "$WEIGHTS" --checkpoint "$OUTPUT/latest.pt" --variant kda \

@@ -118,7 +118,7 @@ def main():
     p.add_argument("--weights-root", required=True)
     p.add_argument("--index-root", required=True)
     p.add_argument("--text-cache-root", required=True)
-    p.add_argument("--output-root", default="outputs/research/spatial-delta-memory/diagnosis")
+    p.add_argument("--output-root", default="../experiment/research/spatial-delta-memory/diagnosis")
     p.add_argument("--images", type=int, default=100)
     p.add_argument("--layers", nargs="+", type=int, default=[0, 7, 13])
     p.add_argument("--timesteps", nargs="+", type=int, default=[100, 500, 900])

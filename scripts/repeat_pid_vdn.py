@@ -190,7 +190,7 @@ def training_command(root, stage, request):
             arguments.extend(("--" + name.replace("_", "-"), str(value)))
     return [
         "bash",
-        str(request.get("driver", REPO / "scripts/train_pid_vdn.sh")),
+        str(request.get("driver", REPO / "scripts/train_adapt.sh")),
         *arguments,
         *request["training_args"],
         "--stage",
@@ -432,7 +432,7 @@ def worker(root, fd):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--stage", choices=(*STAGES, "all"), default="a2")
-    p.add_argument("--output-root", default=os.getenv("PID_VDN_RUN", "outputs/pid-vdn"))
+    p.add_argument("--output-root", default=os.getenv("PID_VDN_RUN", "../experiment/pid-vdn"))
     p.add_argument("--cycle-seconds", type=float, default=1200)
     p.add_argument("--grace-seconds", type=float, default=180)
     p.add_argument("--restart-delay", type=float, default=5)

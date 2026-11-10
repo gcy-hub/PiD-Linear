@@ -63,7 +63,7 @@ def run_pipeline(output_root, common_args, driver=None, world=8, dry_run=False):
     if world != 8:
         raise ValueError("This preset requires 8 GPUs total (one 8-GPU node or two 4-GPU nodes)")
     root = Path(output_root).resolve()
-    driver = Path(driver or REPO / "scripts/train_pid_vdn.sh")
+    driver = Path(driver or REPO / "scripts/train_adapt.sh")
     parent = None
     stopping = [False]
     active = [None]
@@ -154,7 +154,7 @@ def run_pipeline(output_root, common_args, driver=None, world=8, dry_run=False):
 def main():
     defaults = VDNConfig()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", default="outputs/pid-vdn-fixed4-8gpu")
+    parser.add_argument("--output-root", default="../experiment/pid-vdn-fixed4-8gpu")
     for name in ("weights_root", "index_root", "text_cache_root", "subset_root", "gallery_root", "swanlab_mode"):
         parser.add_argument("--" + name.replace("_", "-"), default=getattr(defaults, name))
     parser.add_argument("--workers", type=int, default=2)

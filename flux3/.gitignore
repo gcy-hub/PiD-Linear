@@ -4,6 +4,6 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
-/outputs/
+/../experiment/
 /weights/
 /cache/

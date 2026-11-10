@@ -90,7 +90,7 @@ it does not start training:
 conda activate linear-pid
 WEIGHTS_ROOT=./weights \
 DATASET_ROOT=./raw_data/MultiAspect-4K-1M \
-GALLERY_ROOT=./outputs/linear-pid/assets \
+GALLERY_ROOT=./../experiment/linear-pid/assets \
 GPU_IDS=0,1,2,3 INDEX_WORKERS=8 TEXT_WORKERS=2 CPU_THREADS=1 TEXT_BATCH_SIZE=8 \
 bash download/prepare_training.sh
 ```
@@ -121,7 +121,7 @@ raw_data/MultiAspect-4K-1M/
   datas/0001/...
   linear_pid_index/
   linear_pid_text_cache/
-outputs/linear-pid/assets/
+../experiment/linear-pid/assets/
 ```
 
 Pass these locations explicitly to training using `--weights-root`, `--index-root`,

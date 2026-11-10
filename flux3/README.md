@@ -26,7 +26,7 @@ export FLUX3_WEIGHTS_ROOT="$HOME/huggingface_ckpts"
 export FLUX3_DATASET_ROOT="$HOME/dataset/MultiAspect-4K-1M"
 export FLUX3_SUBSET_ROOT="$FLUX3_DATASET_ROOT/pid_vdn_subsets"
 export FLUX3_CACHE_ROOT="$FLUX3_DATASET_ROOT/flux3_qdm_cache"
-export FLUX3_QDM_RUN="$PWD/outputs/flux3-qdm"
+export FLUX3_QDM_RUN="$PWD/../experiment/flux3-qdm"
 export GPU_IDS="1,2"  # Replace with the GPUs allocated to this workload.
 ```
 
@@ -177,7 +177,7 @@ bash flux3/scripts/train_flux3_pairwise_hybrid.sh \
   --weights-root "$FLUX3_WEIGHTS_ROOT" \
   --subset-root "$FLUX3_SUBSET_ROOT" --cache-root "$FLUX3_CACHE_ROOT" \
   --batch-size 2 --grad-accum 1 --steps 50 --warmup-steps 5 \
-  --workers 4 --threads 1 --output-root outputs/flux3-pairwise-hybrid-50
+  --workers 4 --threads 1 --output-root ../experiment/flux3-pairwise-hybrid-50
 ```
 
 重复同一启动命令可恢复中断实验；已完成阶段和已生成图片会跳过。运行中不重复启动。保存的计划要求恢复时路径、GPU 集合和 batch 等配置保持一致。
@@ -185,16 +185,16 @@ bash flux3/scripts/train_flux3_pairwise_hybrid.sh \
 ```bash
 conda activate flux3-qdm
 bash flux3/scripts/train_flux3_pairwise_hybrid.sh \
-  --output-root outputs/flux3-pairwise-hybrid-50 --status
-tail -f outputs/flux3-pairwise-hybrid-50/repeat/latest-training.log
-cat outputs/flux3-pairwise-hybrid-50/summary.csv
+  --output-root ../experiment/flux3-pairwise-hybrid-50 --status
+tail -f ../experiment/flux3-pairwise-hybrid-50/repeat/latest-training.log
+cat ../experiment/flux3-pairwise-hybrid-50/summary.csv
 
 # 手动停止整个 14 组实验，等待当前更新或图片保存完成。
 bash flux3/scripts/train_flux3_pairwise_hybrid.sh \
-  --output-root outputs/flux3-pairwise-hybrid-50 --stop
+  --output-root ../experiment/flux3-pairwise-hybrid-50 --stop
 ```
 
-各组目录为 `outputs/flux3-pairwise-hybrid-50/pair_00_01/` 等，内部包含 `a1/`、`a2/`、`b/`。最终验证图片位于 `b/galleries/step_000000050/student/2048/`。`summary.csv` 在阶段/续训周期结束时更新，当前逐步进度以日志为准。该入口不提交 Slurm，不自动停止其他任务。
+各组目录为 `../experiment/flux3-pairwise-hybrid-50/pair_00_01/` 等，内部包含 `a1/`、`a2/`、`b/`。最终验证图片位于 `b/galleries/step_000000050/student/2048/`。`summary.csv` 在阶段/续训周期结束时更新，当前逐步进度以日志为准。该入口不提交 Slurm，不自动停止其他任务。
 
 ## 常规三阶段训练
 
@@ -212,7 +212,7 @@ GPU_IDS=0,1 CPU_THREADS=1 bash flux3/scripts/train_flux3_qdm.sh \
   --stage a1 --qdm-layers 0,9,18,27 --steps 500 \
   --batch-size 4 --grad-accum 1 --save-steps 50 \
   --workers 4 --threads 1 --resume auto \
-  --output-root outputs/flux3-qdm-layer-sweep-20261020/layers-4
+  --output-root ../experiment/flux3-qdm-layer-sweep-20261020/layers-4
 ```
 
 For independent two-GPU Slurm experiments, submit one job for each layer count.
@@ -224,7 +224,7 @@ physical nodes are required. Outputs and SwanLab runs remain separate.
 
 ```bash
 conda activate flux3-qdm
-mkdir -p outputs/flux3-qdm-layer-sweep-20261020/slurm
+mkdir -p ../experiment/flux3-qdm-layer-sweep-20261020/slurm
 for count in 4 8 14 20; do
   QDM_LAYER_COUNT="$count" sbatch --job-name="flux3-qdm-a1-l$count" \
     flux3/scripts/train_flux3_qdm_layers.slurm
@@ -275,7 +275,7 @@ For two nodes with four allocated GPUs each, this Slurm script runs **A1 only**,
 
 ```bash
 conda activate flux3-qdm
-export FLUX3_QDM_RUN="$PWD/outputs/flux3-qdm-a1-image-kd-cfg"
+export FLUX3_QDM_RUN="$PWD/../experiment/flux3-qdm-a1-image-kd-cfg"
 mkdir -p "$FLUX3_QDM_RUN/slurm"
 sbatch --output="$FLUX3_QDM_RUN/slurm/%x-%j.out" \
   flux3/scripts/train_flux3_qdm_8gpu.slurm
@@ -285,7 +285,7 @@ For all 28 QDM layers, run **A2 only** from a saved A1 checkpoint on two nodes/e
 
 ```bash
 conda activate flux3-qdm
-export FLUX3_QDM_RUN="$PWD/outputs/flux3-qdm-all28-a1a2-bs4-acc4"
+export FLUX3_QDM_RUN="$PWD/../experiment/flux3-qdm-all28-a1a2-bs4-acc4"
 # Optional: export FLUX3_A1_CHECKPOINT=/path/to/complete-a1-checkpoint
 mkdir -p "$FLUX3_QDM_RUN/slurm"
 sbatch --output="$FLUX3_QDM_RUN/slurm/%x-%j.out" \
@@ -317,7 +317,7 @@ bash flux3/scripts/evaluate_flux3_qdm.sh --checkpoint "$CHECKPOINT" --stage a1 \
 
 bash flux3/scripts/sample_flux3_qdm.sh --checkpoint "$CHECKPOINT" \
   --prompt 'A red fox in snow, fine fur detail' --seed 42 --height 2048 --width 2048 \
-  --steps 50 --cfg 3.5 --alpha 6.93 --output-root outputs/flux3-qdm/sample-fox \
+  --steps 50 --cfg 3.5 --alpha 6.93 --output-root ../experiment/flux3-qdm/sample-fox \
   --gpu-id "${GPU_IDS%%,*}" --threads 1 --max-seconds 1200 --resume
 ```
 
@@ -362,11 +362,11 @@ the parent; same-stage restarts use the latest complete A2 checkpoint.
 
 ```bash
 conda activate flux3-qdm
-mkdir -p outputs/flux3-qdm-layer-sweep-20261020/slurm
+mkdir -p ../experiment/flux3-qdm-layer-sweep-20261020/slurm
 sbatch flux3/scripts/train_flux3_qdm_layers_a2_8gpu.slurm
 ```
 
-Outputs: `outputs/flux3-qdm-layer-sweep-20261020/layers-8/a2`. Do not submit a
+Outputs: `../experiment/flux3-qdm-layer-sweep-20261020/layers-8/a2`. Do not submit a
 second copy while the same experiment is running.
 
 ### All 28 layers: serial A1 and A2 on two nodes
@@ -381,11 +381,11 @@ The training allocation is held during four-GPU validation. B is not started.
 
 ```bash
 conda activate flux3-qdm
-mkdir -p outputs/flux3-qdm-all28-a1a2-bs4-acc4/slurm
+mkdir -p ../experiment/flux3-qdm-all28-a1a2-bs4-acc4/slurm
 sbatch flux3/scripts/train_flux3_qdm_all28_a1a2_8gpu.slurm
 ```
 
-Outputs: `outputs/flux3-qdm-all28-a1a2-bs4-acc4/{a1,a2}`. To recover from an
+Outputs: `../experiment/flux3-qdm-all28-a1a2-bs4-acc4/{a1,a2}`. To recover from an
 interrupted job, repeat the submission only after the previous job has exited.
 
 Slurm allocation/step-creation socket timeouts are retried at most three times,
@@ -435,7 +435,7 @@ GPU_IDS=0,1,2,3 bash flux3/scripts/train_flux3_lowmse4_halo.sh --stage b
 # Or: bash flux3/scripts/train_flux3_lowmse4_halo.sh --stage all
 ```
 
-Default output: `outputs/flux3-qdm-lowmse4-halo2-node01/{a1,a2,b}`.
+Default output: `../experiment/flux3-qdm-lowmse4-halo2-node01/{a1,a2,b}`.
 Controller state and current log are in `repeat/state.json` and
 `repeat/latest-training.log`. Set `FLUX3_LOW4_RUN` or pass `--output-root` to choose
 another directory. Existing checkpoints without `halo` reconstruct as Halo0;
@@ -457,7 +457,7 @@ bash flux3/scripts/train_flux3_lowmse9_halo.sh --status
 bash flux3/scripts/train_flux3_lowmse9_halo.sh --stop
 ```
 
-Outputs: `outputs/flux3-qdm-lowmse9-halo2-node01`. Set `FLUX3_LOW9_RUN` to override.
+Outputs: `../experiment/flux3-qdm-lowmse9-halo2-node01`. Set `FLUX3_LOW9_RUN` to override.
 The next stages remain available using `--stage a2` and `--stage b` after reviewing
 A1; they are not started by the command above.
 
@@ -488,7 +488,7 @@ bash flux3/scripts/train_flux3_lowmse9_local_b.sh --status
 bash flux3/scripts/train_flux3_lowmse9_local_b.sh --stop
 ```
 
-Output: `outputs/flux3-local-lowmse9-halo2-direct-b-node01/b`. Set
+Output: `../experiment/flux3-local-lowmse9-halo2-direct-b-node01/b`. Set
 `FLUX3_LOW9_LOCAL_RUN` to override. Repeating the same command resumes optimizer,
 scheduler, RNG and data position from a completed checkpoint. The general
 training entry supports `--from-base` for an explicit single stage and
@@ -523,7 +523,7 @@ bash flux3/scripts/train_flux3_lowmse9_memory_b.sh --status
 bash flux3/scripts/train_flux3_lowmse9_memory_b.sh --stop
 ```
 
-Output: `outputs/flux3-memory-lowmse9-direct-b-node01/b`. Override with
+Output: `../experiment/flux3-memory-lowmse9-direct-b-node01/b`. Override with
 `FLUX3_LOW9_MEMORY_RUN`. The repeat controller saves and renews its processes
 about every20minutes, resumes completed checkpoints in this same output, and
 stops after B. Manual stop disables further restarts.
@@ -546,7 +546,7 @@ bash flux3/scripts/train_flux3_all_local_b.sh --stop
 Defaults: 500 B steps, per-GPU batch2, accumulation1 (effective batch8 on four
 GPUs), the existing 20K 2K cache, saving and student-only validation every100steps,
 and automatic20-minute process renewal. Output is
-`outputs/flux3-local-all28-halo2-direct-b-node01/b`; override with
+`../experiment/flux3-local-all28-halo2-direct-b-node01/b`; override with
 `FLUX3_ALL_LOCAL_RUN`.
 
 ### Nine-layer QDM with shared text writes
@@ -580,7 +580,7 @@ layers stay Full Attention. It starts B from original weights (fresh QDM,
 zero-increment rank64/alpha64 LoRA), uses the same 20K 2K cache, per-GPU batch2,
 accumulation1, 500 steps, and saving/student-only validation every100steps. On
 three GPUs the effective batch is6. Automatic20-minute checkpoint continuation
-uses `outputs/flux3-memory-text-lowmse9-direct-b-node01/b`, overridden by
+uses `../experiment/flux3-memory-text-lowmse9-direct-b-node01/b`, overridden by
 `FLUX3_LOW9_TEXT_MEMORY_RUN`.
 
 ## 服务器重启后自动恢复
@@ -590,24 +590,24 @@ uses `outputs/flux3-memory-text-lowmse9-direct-b-node01/b`, overridden by
 ```bash
 conda activate flux3-qdm
 bash flux3/scripts/watch_flux3_resume.sh --install \
-  --output-root outputs/flux3-pairs-parallel-then-joint --min-free-mib 32768
+  --output-root ../experiment/flux3-pairs-parallel-then-joint --min-free-mib 32768
 ```
 
-串行14组实验则将输出目录改为`outputs/flux3-pairwise-hybrid-50`。安装会保留其他cron任务，新增开机检查和每分钟检查；读取已有计划中的GPU、数据路径及训练参数，不重新猜测配置。只在安装时的主机恢复该目录。
+串行14组实验则将输出目录改为`../experiment/flux3-pairwise-hybrid-50`。安装会保留其他cron任务，新增开机检查和每分钟检查；读取已有计划中的GPU、数据路径及训练参数，不重新猜测配置。只在安装时的主机恢复该目录。
 
 驱动或显存尚未就绪时继续等待；已有控制器、训练或验证进程时不重复启动。手动`--stop`、失败状态或全部完成不会被自动拉起。恢复从同一目录的完整checkpoint及已保存验证进度继续。监控本身不加载模型，不占GPU显存。
 
 ```bash
 conda activate flux3-qdm
 bash flux3/scripts/watch_flux3_resume.sh --status \
-  --output-root outputs/flux3-pairs-parallel-then-joint
+  --output-root ../experiment/flux3-pairs-parallel-then-joint
 
 # 查看监控日志。
-tail -f outputs/flux3-pairs-parallel-then-joint/repeat/reboot-watch/watch.log
+tail -f ../experiment/flux3-pairs-parallel-then-joint/repeat/reboot-watch/watch.log
 
 # 只移除重启恢复监控，不停止正在运行的训练。
 bash flux3/scripts/watch_flux3_resume.sh --remove \
-  --output-root outputs/flux3-pairs-parallel-then-joint
+  --output-root ../experiment/flux3-pairs-parallel-then-joint
 ```
 
 连续三次启动异常后监控暂停尝试并记录原因；排查后重新安装监控可重新启用。实际重启恢复取决于开机后cron、代码/数据所在文件系统及GPU驱动恢复可用。
@@ -618,10 +618,10 @@ bash flux3/scripts/watch_flux3_resume.sh --remove \
 
 ```bash
 conda activate flux3-qdm
-export FLUX3_MERGED_RUN="$PWD/outputs/flux3-merged28-100steps"
+export FLUX3_MERGED_RUN="$PWD/../experiment/flux3-merged28-100steps"
 PYTHONPATH="$PWD/flux3:$PWD/flux3/DiffSynth-Studio" \
 python -m flux3_qdm.merge_pairs \
-  --group-roots "$PWD/outputs/flux3-pairwise-hybrid-50" \
+  --group-roots "$PWD/../experiment/flux3-pairwise-hybrid-50" \
   --output-root "$FLUX3_MERGED_RUN/merged"
 
 FLUX3_MERGED_CHECKPOINT="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["checkpoint"])' "$FLUX3_MERGED_RUN/merged/ready.json")"

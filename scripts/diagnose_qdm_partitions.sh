@@ -5,12 +5,12 @@ export OMP_NUM_THREADS="${CPU_THREADS:-1}"
 export MKL_NUM_THREADS="${CPU_THREADS:-1}"
 export PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
 PYTHON="${PID_DIAGNOSTIC_PYTHON:-python}"
-ROOT="${PID_PARTITION_OUTPUT:-outputs/research/qdm-partition-diagnosis}"
+ROOT="${PID_PARTITION_OUTPUT:-../experiment/research/qdm-partition-diagnosis}"
 mkdir -p "$ROOT/logs"
 IFS=, read -ra GPUS <<< "${GPU_IDS:-0,1,2,3}"
 # Independent workers; no DDP, no modifications to existing training/generation jobs.
 # One mode/model/case per command; completed outputs and teacher trajectories are reused.
-COMMON=(--weights "${PID_WEIGHTS_ROOT:-weights}" --assets "${PID_GALLERY_ROOT:-outputs/linear-pid/assets}"
+COMMON=(--weights "${PID_WEIGHTS_ROOT:-weights}" --assets "${PID_GALLERY_ROOT:-../experiment/linear-pid/assets}"
         --text-cache "${PID_TEXT_CACHE_ROOT:-dataset/MultiAspect-4K-1M/linear_pid_text_cache}"
         --output "$ROOT" --threads "${CPU_THREADS:-1}")
 CASES=(generated_009_2048 generated_029_2048 real_028_2048 generated_010_2048)

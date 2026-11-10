@@ -29,7 +29,7 @@ def display_number(value):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--output-root", default="outputs/research/spatial-delta-memory")
+    p.add_argument("--output-root", default="../experiment/research/spatial-delta-memory")
     args = p.parse_args()
     root = Path(args.output_root)
     records = [json.loads(f.read_text()) for f in (root / "diagnosis").glob("row_*_t*_l*.json")]

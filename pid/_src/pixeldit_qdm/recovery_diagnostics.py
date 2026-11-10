@@ -280,7 +280,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--weights',type=Path,default=Path.home()/'huggingface_ckpts')
-    p.add_argument('--assets',type=Path,default=Path.home()/'code/PiD-Linear/outputs/linear-pid/assets')
+    p.add_argument('--assets',type=Path,default=Path.home()/'code/PiD-Linear/../experiment/linear-pid/assets')
     p.add_argument('--text-cache',type=Path,default=Path.home()/'dataset/MultiAspect-4K-1M/linear_pid_text_cache')
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--samples',type=int,default=16)

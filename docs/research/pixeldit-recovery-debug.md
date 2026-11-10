@@ -7,8 +7,8 @@ Teacher-forced 在教师相同层输入上重放学生 Attention/Block，主路�
 ```bash
 conda activate linear-pid
 # 在本分支工作树根目录运行。
-export DEBUG_ROOT="$HOME/code/PiD-Linear/outputs/research/pixeldit-qdm-recovery-debug-20261023"
-export DEBUG_CHECKPOINT="$HOME/code/PiD-Linear/outputs/pixeldit-t2i-qdm-halo2/a2/checkpoints/step_000002297_batch_000002297_gen_1792731626398928445"
+export DEBUG_ROOT="$HOME/code/PiD-Linear/../experiment/research/pixeldit-qdm-recovery-debug-20261023"
+export DEBUG_CHECKPOINT="$HOME/code/PiD-Linear/../experiment/pixeldit-t2i-qdm-halo2/a2/checkpoints/step_000002297_batch_000002297_gen_1792731626398928445"
 GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/diagnose_pixeldit_recovery.sh \
   --checkpoint "$DEBUG_CHECKPOINT" --output "$DEBUG_ROOT" --phase errors
 python -m pid._src.pixeldit_qdm.recovery_diagnostics \

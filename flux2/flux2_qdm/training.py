@@ -40,7 +40,7 @@ def parse_args(argv=None):
     p.add_argument('--subset-root',default=os.getenv('FLUX2_SUBSET_ROOT',str(dataset)))
     p.add_argument('--cache-root',default=os.getenv('FLUX2_CACHE_ROOT',str(dataset/'flux2_qdm_cache_1k')))
     p.add_argument('--resolution',type=int,choices=(1024,2048),default=1024)
-    p.add_argument('--output-root',default='outputs/flux2-qdm')
+    p.add_argument('--output-root',default='../experiment/flux2-qdm')
     p.add_argument('--resume',default='auto')
     p.add_argument('--init-from',default='')
     p.add_argument('--a1-init-from',default='',help='Warm-start only A1, then load same-run A1/A2 parents for later stages')

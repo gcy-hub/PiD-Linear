@@ -30,19 +30,19 @@ conda activate linear-pid
 export PID_WEIGHTS_ROOT="$HOME/huggingface_ckpts"
 export PID_INDEX_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_index"
 export PID_TEXT_CACHE_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_text_cache"
-export PID_QDM_RUN="outputs/pid-qdm-halo2-4k-full"
+export PID_QDM_RUN="../experiment/pid-qdm-halo2-4k-full"
 
 # 仅需准备一次；中断后重复执行会保留已完成条件。
 CUDA_VISIBLE_DEVICES=0 OMP_NUM_THREADS=1 \
 python -m scripts.prepare_pid_qdm_selected_assets \
-  --source-assets outputs/linear-pid/assets \
+  --source-assets ../experiment/linear-pid/assets \
   --output-root "$PID_QDM_RUN/assets" \
   --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
   --text-cache-root "$PID_TEXT_CACHE_ROOT" \
   --cases generated_010,generated_029,generated_003,generated_009,generated_019,generated_022,real_011,real_028
 
 # 后台串行训练。定期保存退出，更新控制器和训练进程后续训。
-GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pid_qdm_4k_full.sh
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_adapt.sh --config configs/training/pid-qdm.json --mode repeat
 
 # 状态和手动停止；停止后不会自动重启。
 python -m scripts.repeat_pid_vdn --output-root "$PID_QDM_RUN" --status
@@ -54,11 +54,11 @@ SwanLab默认离线，数据位于各阶段的 `swanlog`；训练日志位于 `r
 
 循环控制器在600秒时请求保存，最多等待1,100秒完成当前更新或图像，随后更新进程；遇到OOM、数值错误或连续无进展会停止。
 
-两节点任务使用 `scripts/train_pid_qdm_4k_full_8gpu.slurm`，需设置上述模型、索引和文本缓存环境变量，并将 `PID_GALLERY_ROOT` 指向已准备的8张4K条件。
+两节点任务使用 `scripts/train.slurm --config configs/training/pid-qdm.json`，需设置上述模型、索引和文本缓存环境变量，并将 `PID_GALLERY_ROOT` 指向已准备的8张4K条件。
 将 `PID_QDM_RUN` 设置为独立于node01的目录，然后执行：
 
 ```bash
 conda activate linear-pid
-mkdir -p outputs/slurm
-sbatch scripts/train_pid_qdm_4k_full_8gpu.slurm
+mkdir -p ../experiment/slurm
+RUN_OUTPUT="$PID_QDM_RUN" sbatch --nodes=2 --gpus-per-node=4 scripts/train.slurm --config configs/training/pid-qdm.json --resolution 4096 --stage all --resume auto
 ```

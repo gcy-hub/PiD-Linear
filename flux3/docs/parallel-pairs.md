@@ -71,7 +71,7 @@ bash flux3/scripts/train_flux3_pairs_parallel_then_joint.sh \
   --weights-root "$FLUX3_WEIGHTS_ROOT" \
   --subset-root "$FLUX3_SUBSET_ROOT" --cache-root "$FLUX3_CACHE_ROOT" \
   --batch-size 2 --grad-accum 1 --workers 4 --threads 1 \
-  --output-root outputs/flux3-pairs-parallel-then-joint
+  --output-root ../experiment/flux3-pairs-parallel-then-joint
 ```
 
 入口检查20K和50K缓存后返回，后台自动执行全部流程。四个队列并行，队列内部串行；只有14组B验证全部完成且GPU进程退出后，才会合并并开始8卡联合训练。
@@ -87,23 +87,23 @@ bash flux3/scripts/train_flux3_pairs_parallel_then_joint.sh \
 ```bash
 conda activate flux3-qdm
 bash flux3/scripts/train_flux3_pairs_parallel_then_joint.sh \
-  --output-root outputs/flux3-pairs-parallel-then-joint --status
+  --output-root ../experiment/flux3-pairs-parallel-then-joint --status
 
 # 一个队列的当前训练或验证日志。
-tail -f outputs/flux3-pairs-parallel-then-joint/pairs/group_0/repeat/latest-training.log
+tail -f ../experiment/flux3-pairs-parallel-then-joint/pairs/group_0/repeat/latest-training.log
 
 # 合并后的联合训练日志（进入联合阶段后出现）。
-tail -f outputs/flux3-pairs-parallel-then-joint/joint/repeat/latest-training.log
+tail -f ../experiment/flux3-pairs-parallel-then-joint/joint/repeat/latest-training.log
 
 # 停止全部队列及联合训练，在安全边界保存。
 bash flux3/scripts/train_flux3_pairs_parallel_then_joint.sh \
-  --output-root outputs/flux3-pairs-parallel-then-joint --stop
+  --output-root ../experiment/flux3-pairs-parallel-then-joint --stop
 ```
 
 目录结构：
 
 ```text
-outputs/flux3-pairs-parallel-then-joint/
+../experiment/flux3-pairs-parallel-then-joint/
   repeat/                       # 总控制器状态及日志
   pairs/group_0/pair_00_01/      # 每组实验内有a1、a2、b
   pairs/group_0/pair_08_09/
@@ -125,7 +125,7 @@ outputs/flux3-pairs-parallel-then-joint/
 ```bash
 conda activate flux3-qdm
 bash flux3/scripts/watch_flux3_resume.sh --install \
-  --output-root outputs/flux3-pairs-parallel-then-joint --min-free-mib 32768
+  --output-root ../experiment/flux3-pairs-parallel-then-joint --min-free-mib 32768
 ```
 
 监控在开机时及每分钟检查同一输出目录，资源就绪后恢复四个队列或联合训练，保留已有完整checkpoint和验证图片。不会重复启动已有进程，手动停止后不会拉起。状态、移除命令见[重启恢复说明](../README.md#服务器重启后自动恢复)。

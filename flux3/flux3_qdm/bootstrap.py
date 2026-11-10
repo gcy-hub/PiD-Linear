@@ -252,7 +252,7 @@ def main():
     from .resources import DEFAULT_WEIGHTS_ROOT
     p = argparse.ArgumentParser(description=__doc__)
     dataset = Path(os.getenv('FLUX3_DATASET_ROOT',str(Path.home()/'dataset/MultiAspect-4K-1M')))
-    p.add_argument('--output-root',default=os.getenv('FLUX3_QDM_RUN','outputs/flux3-qdm'))
+    p.add_argument('--output-root',default=os.getenv('FLUX3_QDM_RUN','../experiment/flux3-qdm'))
     p.add_argument('--weights-root',default=DEFAULT_WEIGHTS_ROOT)
     p.add_argument('--subset-root',default=os.getenv('FLUX3_SUBSET_ROOT',str(dataset/'pid_vdn_subsets')))
     p.add_argument('--cache-root',default=os.getenv('FLUX3_CACHE_ROOT',str(dataset/'flux3_qdm_cache')))

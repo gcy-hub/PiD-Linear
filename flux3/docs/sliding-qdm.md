@@ -23,7 +23,7 @@ conda activate flux3-qdm
 export FLUX3_WEIGHTS_ROOT="$HOME/huggingface_ckpts"
 export FLUX3_SUBSET_ROOT="$HOME/dataset/MultiAspect-4K-1M/pid_vdn_subsets"
 export FLUX3_CACHE_ROOT="$HOME/dataset/MultiAspect-4K-1M/flux3_qdm_cache"
-export FLUX3_QDM_RUN="$PWD/outputs/flux3-sliding11-qdm-2k-node01"
+export FLUX3_QDM_RUN="$PWD/../experiment/flux3-sliding11-qdm-2k-node01"
 GPU_IDS=1,2,3 CPU_THREADS=1 bash flux3/scripts/train_flux3_sliding_qdm.sh
 ```
 
@@ -86,7 +86,7 @@ conda activate flux3-qdm
 GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
 bash flux3/scripts/train_flux3_sliding_qdm.sh \
   --batch-size 2 --grad-accum 1 \
-  --output-root "$PWD/outputs/flux3-sliding11-qdm-2k-server"
+  --output-root "$PWD/../experiment/flux3-sliding11-qdm-2k-server"
 ```
 
 双节点训练不能仅靠 GPU_IDS 指定远程卡；上面的命令是单机八卡入口。更改为双节点时需另行配置分布式启动和共享路径。

@@ -52,7 +52,7 @@ def main():
     p.add_argument("--warmup", type=int, default=3)
     p.add_argument("--skip-generation", action="store_true")
     p.add_argument("--model-seed", type=int, default=42)
-    p.add_argument("--output-root", default="outputs/pid-vdn/network-benchmark")
+    p.add_argument("--output-root", default="../experiment/pid-vdn/network-benchmark")
     p.add_argument("--threads", type=int, default=1)
     p.add_argument(
         "--models",

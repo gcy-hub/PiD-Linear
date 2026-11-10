@@ -20,7 +20,7 @@ export PID_GALLERY_ROOT="/path/to/fixed-gallery-assets"
 export PID_TEXT_CACHE_ROOT="/path/to/linear_pid_text_cache"
 export PID_QDM_CHECKPOINT="/path/to/pid-qdm/a2/checkpoints/step_DIRECTORY"
 export PIXELDIT_QDM_CHECKPOINT="/path/to/pixeldit-qdm/a1/checkpoints/step_DIRECTORY"
-export PID_PARTITION_OUTPUT="outputs/research/qdm-partition-diagnosis"
+export PID_PARTITION_OUTPUT="../experiment/research/qdm-partition-diagnosis"
 
 GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/diagnose_qdm_partitions.sh
 ```

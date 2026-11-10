@@ -162,7 +162,7 @@ def launch(root,config):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--output-root',default='outputs/flux3-pairwise-hybrid-50')
+    p.add_argument('--output-root',default='../experiment/flux3-pairwise-hybrid-50')
     p.add_argument('--gpu-ids',default=os.getenv('GPU_IDS','1,2,3'))
     p.add_argument('--pair-indices',type=lambda s:[int(i) for i in s.split(',')],default=None,help='Optional zero-based pair IDs, e.g. 0,4,8,12')
     for name,default in [('batch-size',2),('grad-accum',1),('workers',4),('threads',1),('steps',50),('warmup-steps',5),('seed',42),('cycle-seconds',1200),('grace-seconds',180)]:

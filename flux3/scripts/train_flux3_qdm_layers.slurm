@@ -9,7 +9,7 @@
 #SBATCH --mem=96G
 #SBATCH --time=6-00:00:00
 #SBATCH --signal=B:USR1@1800
-#SBATCH --output=outputs/flux3-qdm-layer-sweep-20261020/slurm/%x-%j.out
+#SBATCH --output=../experiment/flux3-qdm-layer-sweep-20261020/slurm/%x-%j.out
 set -euo pipefail
 cd "${FLUX3_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 source "${FLUX3_CONDA_BASE:-$HOME/software/miniconda3}/etc/profile.d/conda.sh"
@@ -27,7 +27,7 @@ if n not in (4,8,14,20):raise ValueError('Expected 4, 8, 14 or 20 layers')
 print(','.join(str(round(i*27/(n-1))) for i in range(n)))
 PY
 )"
-run="${FLUX3_QDM_RUN:-$PWD/outputs/flux3-qdm-layer-sweep-20261020/layers-$count}"
+run="${FLUX3_QDM_RUN:-$PWD/../experiment/flux3-qdm-layer-sweep-20261020/layers-$count}"
 mkdir -p "$run/a1"
 token="flux3-layers:$SLURM_JOB_ID"
 request_stop() { (set -o noclobber; printf '%s' "$token" > "$run/a1/STOP") 2>/dev/null || true; }

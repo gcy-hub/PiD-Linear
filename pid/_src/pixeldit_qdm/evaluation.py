@@ -97,7 +97,7 @@ def render_gallery(net,config,output,rank=0,world=1,tracker=None,step=0,suite='q
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--checkpoint',required=True);p.add_argument('--weights-root');p.add_argument('--teacher-checkpoint');p.add_argument('--gallery-root');p.add_argument('--index-root');p.add_argument('--text-cache-root')
-    p.add_argument('--output-dir',default='outputs/pixeldit-t2i-qdm-halo2/inference');p.add_argument('--include-4k',action='store_true')
+    p.add_argument('--output-dir',default='../experiment/pixeldit-t2i-qdm-halo2/inference');p.add_argument('--include-4k',action='store_true')
     p.add_argument('--suite',choices=['quick','qualitative'],default='qualitative');p.add_argument('--limit',type=int,default=0)
     args=p.parse_args(argv);payload=load_state(args.checkpoint);config=VDNConfig(**payload['config'])
     if config.backbone!='pixeldit_t2i':raise ValueError('Expected PixelDiT checkpoint')

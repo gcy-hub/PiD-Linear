@@ -76,8 +76,8 @@ class VDNConfig:
         default_factory=lambda: os.getenv("PID_VDN_SUBSET_ROOT", "dataset/MultiAspect-4K-1M/pid_vdn_subsets")
     )
     train_index_root: str = ""
-    gallery_root: str = field(default_factory=lambda: os.getenv("PID_GALLERY_ROOT", "outputs/linear-pid/assets"))
-    output_root: str = "outputs/pid-vdn"
+    gallery_root: str = field(default_factory=lambda: os.getenv("PID_GALLERY_ROOT", "../experiment/linear-pid/assets"))
+    output_root: str = "../experiment/pid-vdn"
     backbone: str = "pid"
     teacher_checkpoint: str = ""
     a1_batch_size: int = 4

@@ -22,7 +22,7 @@ export PID_INDEX_ROOT="$PWD/dataset/MultiAspect-4K-1M/linear_pid_index"
 export PID_VDN_SUBSET_ROOT="$PWD/dataset/MultiAspect-4K-1M/pid_vdn_subsets"
 export PID_TEXT_CACHE_ROOT="$PWD/dataset/MultiAspect-4K-1M/linear_pid_text_cache"
 export PID_GALLERY_ROOT="$PWD/runtime/pid-vdn-validation/gallery"
-export PIXELDIT_RUN="$PWD/outputs/pixeldit-t2i-qdm-halo2-rope"
+export PIXELDIT_RUN="$PWD/../experiment/pixeldit-t2i-qdm-halo2-rope"
 
 # 一次性补充两条原生 CFG 条件，结果写入现有文本缓存目录。
 CUDA_VISIBLE_DEVICES=0 python -m pid._src.pixeldit_qdm.conditioning \
@@ -47,7 +47,7 @@ CUDA_VISIBLE_DEVICES=0 python -m pid._src.pixeldit_qdm.conditioning \
 
 ```bash
 conda activate linear-pid
-GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_qdm.sh \
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_adapt.sh --config configs/training/pixeldit-qdm.json --mode train \
   --stage all --resume auto --teacher-checkpoint "$PIXELDIT_BASE" \
   --output-root "$PIXELDIT_RUN" --workers 4 --threads 1
 ```
@@ -64,14 +64,14 @@ GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_qdm.sh \
 
 ```bash
 conda activate linear-pid
-GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_qdm_repeat.sh \
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_adapt.sh --config configs/training/pixeldit-qdm.json --mode repeat \
   --stage all --resume auto --teacher-checkpoint "$PIXELDIT_BASE" \
   --output-root "$PIXELDIT_RUN" --cycle-seconds 1200 \
   --workers 4 --threads 1 --swanlab-mode offline
 
-bash scripts/train_pixeldit_qdm_repeat.sh --output-root "$PIXELDIT_RUN" --status
+bash scripts/train_adapt.sh --config configs/training/pixeldit-qdm.json --mode repeat --output-root "$PIXELDIT_RUN" --status
 tail -f "$PIXELDIT_RUN/repeat/latest-training.log"
-bash scripts/train_pixeldit_qdm_repeat.sh --output-root "$PIXELDIT_RUN" --stop
+bash scripts/train_adapt.sh --config configs/training/pixeldit-qdm.json --mode repeat --output-root "$PIXELDIT_RUN" --stop
 ```
 
 手动停止后不会自动拉起。重复启动命令可继续。OOM、非有限数值或连续三轮无进展会停止重试，原因保留在 `repeat/controller.log`。SwanLab 默认离线，各阶段日志位于 `a1/swanlog`、`a2/swanlog`、`b/swanlog`，训练指标同时写入各阶段 `metrics.jsonl`。
@@ -120,9 +120,9 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --standalone --nproc_per_node=4 \
 
 ```bash
 conda activate linear-pid
-export PIXELDIT_PARTIAL_RUN="$PWD/outputs/pixeldit-t2i-qdm-halo2-full-2-3-4-5-node01"
+export PIXELDIT_PARTIAL_RUN="$PWD/../experiment/pixeldit-t2i-qdm-halo2-full-2-3-4-5-node01"
 GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-bash scripts/train_pixeldit_partial_full_node01.sh \
+bash scripts/train_adapt.sh --config configs/training/pixeldit-qdm.json --mode repeat \
   --weights-root "$PID_WEIGHTS_ROOT" --teacher-checkpoint "$PIXELDIT_BASE" \
   --index-root "$PID_INDEX_ROOT" --text-cache-root "$PID_TEXT_CACHE_ROOT" \
   --subset-root "$PID_VDN_SUBSET_ROOT" --gallery-root "$PID_GALLERY_ROOT"
@@ -145,7 +145,7 @@ python -m scripts.repeat_pid_vdn --stop --output-root "$PIXELDIT_PARTIAL_RUN"
 ```bash
 conda activate linear-pid
 export PIXELDIT_SYNTH_DATA="$PWD/dataset/MultiAspect-4K-1M/pixeldit_t2i_synthetic_a1"
-export PIXELDIT_SYNTH_RUN="$PWD/outputs/pixeldit-t2i-qdm-halo2-rope-synthetic-a1"
+export PIXELDIT_SYNTH_RUN="$PWD/../experiment/pixeldit-t2i-qdm-halo2-rope-synthetic-a1"
 
 GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_synthetic_a1.sh start \
   --data-root "$PIXELDIT_SYNTH_DATA" --output-root "$PIXELDIT_SYNTH_RUN" \

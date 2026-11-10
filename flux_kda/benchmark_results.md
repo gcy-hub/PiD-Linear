@@ -17,7 +17,7 @@
 
 本次修改版总时间分别增加 46.8% 和 42.1%。完整 KDA 分支均执行，零输出初始化没有省略计算。
 
-![原版与未微调学生](../outputs/kda-speed/comparison.png)
+![原版与未微调学生](../../experiment/kda-speed/comparison.png)
 
 原始模型生成了连贯街景。两张未微调学生图均出现公交车重复和空间结构错乱。此时 KDA 输出投影为零，图像表现对应初始 Sliding 学生。正式微调后的质量与性能需要另行测量。
 
@@ -32,4 +32,4 @@
 
 未启动正式训练；未验证完整模型的训练显存、收敛或多卡 DDP 恢复。
 
-原始测量记录位于 `outputs/kda-speed/{flux2,flux3}/{original,kda}.json`；四张原始尺寸 PNG 位于同目录。检查日志：`outputs/kda-check/check.log`。训练和复现命令见 [README](README.md)。
+原始测量记录位于 `../experiment/kda-speed/{flux2,flux3}/{original,kda}.json`；四张原始尺寸 PNG 位于同目录。检查日志：`../experiment/kda-check/check.log`。训练和复现命令见 [README](README.md)。

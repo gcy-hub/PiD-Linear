@@ -6,7 +6,7 @@ export OMP_NUM_THREADS=4
 export FLA_DISABLE_TENSOR_CACHE=1
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 PYTHON="${PYTHON:-python}"
-OUTPUT="${1:-outputs/flux3-stock-kda-clear-node01-bs1}"
+OUTPUT="${1:-../experiment/flux3-stock-kda-clear-node01-bs1}"
 WEIGHTS="${WEIGHTS:-weights/flux-3-image-klein-base/model.safetensors}"
 DATA="${DATA:-dataset/CLEAR-FLUX3-klein-base-2K-2048_20261106-1102/CLEAR-FLUX3-klein-base-2K-2048}"
 RESOURCES="${RESOURCES:-weights}"
@@ -37,8 +37,8 @@ for boundary in 1 2 $(seq 200 200 10000); do
     validation="$OUTPUT/validation/step-$boundary"
     if [[ -f "$validation/kda.json" ]]; then continue; fi
     mkdir -p "$validation"
-    if [[ -f outputs/stock-kda-speed/flux3-2k/conditions.pt ]]; then
-        cp outputs/stock-kda-speed/flux3-2k/conditions.pt "$validation/conditions.pt"
+    if [[ -f ../experiment/stock-kda-speed/flux3-2k/conditions.pt ]]; then
+        cp ../experiment/stock-kda-speed/flux3-2k/conditions.pt "$validation/conditions.pt"
     fi
     CUDA_VISIBLE_DEVICES=1 "$PYTHON" -m flux_kda.benchmark --family flux3 \
         --weights "$WEIGHTS" --resources "$RESOURCES" --checkpoint "$OUTPUT/latest.pt" --variant kda \

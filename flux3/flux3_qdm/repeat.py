@@ -417,7 +417,7 @@ def worker(root, fd):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--stage", choices=(*STAGES, "all"), default="a1")
-    p.add_argument("--output-root", default=os.getenv("FLUX3_QDM_RUN", "outputs/flux3-qdm"))
+    p.add_argument("--output-root", default=os.getenv("FLUX3_QDM_RUN", "../experiment/flux3-qdm"))
     p.add_argument("--gpu-ids", default=os.getenv("GPU_IDS", "0"))
     p.add_argument("--cycle-seconds", type=float, default=1200)
     p.add_argument("--grace-seconds", type=float, default=180)

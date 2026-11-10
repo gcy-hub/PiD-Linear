@@ -22,7 +22,7 @@ GPU_IDS=1,2,3 CPU_THREADS=1 bash flux2/scripts/train_flux2_sliding_qdm.sh \
   --resolution 1024 --batch-size 4 --grad-accum 1 \
   --a1-steps 200 --a2-steps 200 --b-steps 1000 \
   --validation-steps 200 --save-steps 25 \
-  --output-root outputs/flux2-sliding11-qdm-1k-node01
+  --output-root ../experiment/flux2-sliding11-qdm-1k-node01
 ```
 
 命令在后台先完成缓存，然后串行训练三阶段，每轮约20分钟保存、更新进程并续跑。再次运行同一命令恢复同一目录；控制器有锁，拒绝重复启动。连续数值错误、OOM或无进展会停止重试。手动停止后不会自动重启。
@@ -46,12 +46,12 @@ conda activate flux3-qdm
 cd /path/to/PiD-Linear
 # 实际阶段、周期与进程
 GPU_IDS=1,2,3 bash flux2/scripts/train_flux2_sliding_qdm.sh \
-  --output-root outputs/flux2-sliding11-qdm-1k-node01 --status
+  --output-root ../experiment/flux2-sliding11-qdm-1k-node01 --status
 # 完成当前更新/图像边界后停止自动续跑
 bash flux2/scripts/train_flux2_sliding_qdm.sh \
-  --output-root outputs/flux2-sliding11-qdm-1k-node01 --stop
+  --output-root ../experiment/flux2-sliding11-qdm-1k-node01 --stop
 # 训练/准备主日志；缓存细分日志在 $FLUX2_CACHE_ROOT/logs/
-tail -f outputs/flux2-sliding11-qdm-1k-node01/repeat/latest-training.log
+tail -f ../experiment/flux2-sliding11-qdm-1k-node01/repeat/latest-training.log
 ```
 
 ## 独立验证

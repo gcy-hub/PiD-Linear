@@ -39,7 +39,7 @@ def cycle(argv):
     remaining=max(0,int(config.max_seconds-(time.monotonic()-started))) if config.max_seconds else 0
     if config.max_seconds and remaining<120:return 0
     print('PHASE synthetic-data A1 from original PixelDiT weights',flush=True)
-    return subprocess.call(['bash',str(REPO/'scripts/train_pixeldit_qdm.sh'),*argv,
+    return subprocess.call(['bash',str(REPO/'scripts/train_adapt.sh'),'--config',str(REPO/'configs/training/pixeldit-qdm.json'),*argv,
                             '--stage','a1','--max-seconds',str(remaining)],cwd=REPO)
 
 
@@ -55,7 +55,7 @@ def main(argv=None):
     defaults=['--backbone','pixeldit_t2i','--memory-mode','fixed4','--local-mode','halo','--local-halo','2',
               '--region-size','8','--remote-rope','--resolution','1024','--flow-shift','4',
               '--shift-base-size','1024','--grad-accum','1','--stage','a1',
-              '--output-root','outputs/pixeldit-t2i-qdm-halo2-rope-synthetic-a1']
+              '--output-root','../experiment/pixeldit-t2i-qdm-halo2-rope-synthetic-a1']
     config,_=parse_args(defaults+remaining)
     root=Path(config.output_root).resolve()
     if args.action=='status':

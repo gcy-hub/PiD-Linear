@@ -8,13 +8,13 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=128G
 #SBATCH --time=01:00:00
-#SBATCH --output=outputs/flux3-qdm-all28-a1a2-bs4-acc4/slurm/%x-%j.out
+#SBATCH --output=../experiment/flux3-qdm-all28-a1a2-bs4-acc4/slurm/%x-%j.out
 set -euo pipefail
 cd "${FLUX3_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 source "${FLUX3_CONDA_BASE:-$HOME/software/miniconda3}/etc/profile.d/conda.sh"
 conda activate flux3-qdm
 export PYTHONPATH="$PWD/flux3:$PWD/flux3/DiffSynth-Studio${PYTHONPATH:+:$PYTHONPATH}"
-export FLUX3_PARENT_RUN="${FLUX3_PARENT_RUN:-$PWD/outputs/flux3-qdm-all28-a1a2-bs4-acc4}"
+export FLUX3_PARENT_RUN="${FLUX3_PARENT_RUN:-$PWD/../experiment/flux3-qdm-all28-a1a2-bs4-acc4}"
 export FLUX3_TEST_RUN="${FLUX3_TEST_RUN:-$FLUX3_PARENT_RUN/preflight/a2-bs2-2gpu-$SLURM_JOB_ID}"
 export FLUX3_WEIGHTS_ROOT="${FLUX3_WEIGHTS_ROOT:-$HOME/huggingface_ckpts}"
 export FLUX3_SUBSET_ROOT="${FLUX3_SUBSET_ROOT:-$HOME/dataset/MultiAspect-4K-1M/pid_vdn_subsets}"

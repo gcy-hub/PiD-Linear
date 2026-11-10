@@ -9,5 +9,5 @@ exec bash "$REPO/flux3/scripts/train_flux3_qdm_repeat.sh" \
   --region-size 8 --halo 2 --batch-size 2 --grad-accum 1 \
   --workers 4 --threads "$CPU_THREADS" \
   --save-steps 100 --validation-steps 100 --cycle-seconds 1200 \
-  --output-root "${FLUX3_ALL_LOCAL_RUN:-outputs/flux3-local-all28-halo2-direct-b-node01}" \
+  --output-root "${FLUX3_ALL_LOCAL_RUN:-../experiment/flux3-local-all28-halo2-direct-b-node01}" \
   "$@"

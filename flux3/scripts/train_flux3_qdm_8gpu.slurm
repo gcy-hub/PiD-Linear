@@ -9,14 +9,14 @@
 #SBATCH --mem=0
 #SBATCH --time=6-00:00:00
 #SBATCH --signal=B:USR1@1800
-#SBATCH --output=outputs/flux3-qdm-a1-image-kd-cfg/slurm/%x-%j.out
+#SBATCH --output=../experiment/flux3-qdm-a1-image-kd-cfg/slurm/%x-%j.out
 set -euo pipefail
 FLUX3_PROJECT_ROOT="${FLUX3_PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
 cd "$FLUX3_PROJECT_ROOT"
 source "${FLUX3_CONDA_BASE:-$HOME/software/miniconda3}/etc/profile.d/conda.sh"
 conda activate flux3-qdm
 export PYTHONPATH="$FLUX3_PROJECT_ROOT/flux3:$FLUX3_PROJECT_ROOT/flux3/DiffSynth-Studio${PYTHONPATH:+:$PYTHONPATH}"
-export FLUX3_QDM_RUN="${FLUX3_QDM_RUN:-$FLUX3_PROJECT_ROOT/outputs/flux3-qdm-a1-image-kd-cfg}"
+export FLUX3_QDM_RUN="${FLUX3_QDM_RUN:-$FLUX3_PROJECT_ROOT/../experiment/flux3-qdm-a1-image-kd-cfg}"
 export FLUX3_WEIGHTS_ROOT="${FLUX3_WEIGHTS_ROOT:-$HOME/huggingface_ckpts}"
 export FLUX3_SUBSET_ROOT="${FLUX3_SUBSET_ROOT:-$HOME/dataset/MultiAspect-4K-1M/pid_vdn_subsets}"
 export FLUX3_CACHE_ROOT="${FLUX3_CACHE_ROOT:-$HOME/dataset/MultiAspect-4K-1M/flux3_qdm_cache}"

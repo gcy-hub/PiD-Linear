@@ -29,10 +29,10 @@ FLUX3 4K 去噪为原版的 50.8%，即约 1.97 倍速度；包含 VAE 的总耗
 
 ## 图片与验证
 
-![左原版，右未训练的标准 KDA 混合版](../outputs/stock-kda-speed/comparison.png)
+![左原版，右未训练的标准 KDA 混合版](../../experiment/stock-kda-speed/comparison.png)
 
 六张原图已确认尺寸：FLUX2/FLUX3 2K 为 2048×2048，FLUX3 4K 为 4096×4096。原始模型生成连贯公交街景；修改版 FLUX2 出现密集碎片，FLUX3 两个分辨率均出现明显公交车重复与空间结构错乱。新增 KDA 分支尚未训练，当前结果用于效率测量，不代表微调后图像质量。
 
-四方向与标准 FLA 层输出一致性、各参数有限梯度、BF16 推理权重一致性、FLUX2 两类 attention 接入、FLUX3 checkpoint 重算与 teacher 隔离、小型 block 的 Prodigy 更新及 delta 恢复均通过。检查日志：`outputs/kda-check/stock-fla-final.log`。
+四方向与标准 FLA 层输出一致性、各参数有限梯度、BF16 推理权重一致性、FLUX2 两类 attention 接入、FLUX3 checkpoint 重算与 teacher 隔离、小型 block 的 Prodigy 更新及 delta 恢复均通过。检查日志：`../experiment/kda-check/stock-fla-final.log`。
 
-图片、latent、原始 JSON 和运行日志位于 `outputs/stock-kda-speed/flux2-2k/`、`flux3-2k/`、`flux3-4k-original/`、`flux3-4k-kda/`。运行命令见 [README](README.md)。本轮任务已全部结束，无训练任务。
+图片、latent、原始 JSON 和运行日志位于 `../experiment/stock-kda-speed/flux2-2k/`、`flux3-2k/`、`flux3-4k-original/`、`flux3-4k-kda/`。运行命令见 [README](README.md)。本轮任务已全部结束，无训练任务。

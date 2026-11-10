@@ -4,7 +4,7 @@ set -euo pipefail
 
 WEIGHTS_ROOT="${WEIGHTS_ROOT:-./weights}"
 DATASET_ROOT="${DATASET_ROOT:-./raw_data/MultiAspect-4K-1M}"
-GALLERY_ROOT="${GALLERY_ROOT:-./outputs/linear-pid/assets}"
+GALLERY_ROOT="${GALLERY_ROOT:-./../experiment/linear-pid/assets}"
 GPU_IDS="${GPU_IDS:-0}"
 INDEX_WORKERS="${INDEX_WORKERS:-8}"
 TEXT_WORKERS="${TEXT_WORKERS:-2}"

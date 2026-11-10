@@ -1,0 +1,8 @@
+[
+  "--memory-mode",
+  "fixed4",
+  "--local-mode",
+  "halo",
+  "--local-halo",
+  "2"
+]

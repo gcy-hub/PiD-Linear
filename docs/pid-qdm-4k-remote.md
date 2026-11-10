@@ -47,7 +47,7 @@ bash scripts/train_pid_qdm_4k_8gpu_pipeline.sh \
   --dataset-root "$DATASET_ROOT" \
   --subset-root "$SUBSET_ROOT" \
   --weights-root "$WEIGHTS_ROOT" \
-  --output-root outputs/pid-qdm-halo2-4k-8gpu \
+  --output-root ../experiment/pid-qdm-halo2-4k-8gpu \
   --batch-size 8 --fallback-batch-size 4 --grad-accum 8 \
   --download-workers 16 --index-workers 8 \
   --text-batch-size 8 --workers 4 --threads 1
@@ -74,14 +74,14 @@ bash scripts/train_pid_qdm_4k_8gpu_pipeline.sh \
 
 ```bash
 tail -f pipeline.log
-cat outputs/pid-qdm-halo2-4k-8gpu/pipeline/training.json
+cat ../experiment/pid-qdm-halo2-4k-8gpu/pipeline/training.json
 ```
 
-各阶段日志在 `outputs/pid-qdm-halo2-4k-8gpu/pipeline/logs/`，训练结果在 `a1/`、`a2/`、`b/`，SwanLab 默认离线。`training.json` 记录实际 batch 和 OOM 回退历史。暂停时可向各阶段写入 STOP，脚本会在更新边界保存退出，不会自动重启：
+各阶段日志在 `../experiment/pid-qdm-halo2-4k-8gpu/pipeline/logs/`，训练结果在 `a1/`、`a2/`、`b/`，SwanLab 默认离线。`training.json` 记录实际 batch 和 OOM 回退历史。暂停时可向各阶段写入 STOP，脚本会在更新边界保存退出，不会自动重启：
 
 ```bash
-mkdir -p outputs/pid-qdm-halo2-4k-8gpu/{a1,a2,b}
-touch outputs/pid-qdm-halo2-4k-8gpu/{a1,a2,b}/STOP
+mkdir -p ../experiment/pid-qdm-halo2-4k-8gpu/{a1,a2,b}
+touch ../experiment/pid-qdm-halo2-4k-8gpu/{a1,a2,b}/STOP
 ```
 
 继续前删除这三个 STOP，再重复原命令。所有路径均可通过上述参数指定。

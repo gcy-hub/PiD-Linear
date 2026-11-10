@@ -179,7 +179,7 @@ def launch(root,config,preflight=True):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--output-root',default='outputs/flux3-pairs-parallel-then-joint')
+    p.add_argument('--output-root',default='../experiment/flux3-pairs-parallel-then-joint')
     p.add_argument('--gpu-ids',default=os.getenv('GPU_IDS','0,1,2,3,4,5,6,7'))
     for name,default in [('batch-size',2),('grad-accum',1),('workers',4),('threads',1),('seed',42),('cycle-seconds',1200),('grace-seconds',180)]:p.add_argument('--'+name,type=int,default=default)
     data=Path.home()/'dataset/MultiAspect-4K-1M'

@@ -21,10 +21,10 @@
 
 ```bash
 conda activate linear-pid
-GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_pixeldit_qdm.sh \
+GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_adapt.sh --config configs/training/pixeldit-qdm.json --mode train \
   --stage all --no-remote-rope --a1-steps 2 --a2-steps 2 --b-steps 2 \
   --save-steps 1 --validation-steps 0 --teacher-checkpoint "$PIXELDIT_BASE" \
-  --workers 4 --threads 1 --output-root outputs/pixeldit-qdm-preflight
+  --workers 4 --threads 1 --output-root ../experiment/pixeldit-qdm-preflight
 ```
 
 ## 恢复远程 RoPE 后的检查

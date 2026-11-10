@@ -1,6 +1,6 @@
 # FLUX3 Sliding + KDA
 
-从仓库根目录运行命令，使用已激活环境中的 Python。模型、数据和实验输出路径通过配置或命令行传入，支持绝对路径。默认输出到 `outputs/`；也可将它链接到外部实验目录。每个实验使用独立子目录保存断点、图片和日志。切换分支前先停止训练与验证。路径约定见 [工作目录](docs/workspace.md)。
+从仓库根目录运行命令，使用已激活环境中的 Python。模型、数据和实验输出路径通过配置或命令行传入，支持绝对路径。默认输出到 `../experiment/`，不在仓库内建立输出链接。每个实验使用独立子目录保存断点、图片和日志。切换分支前先停止训练与验证。路径约定见 [工作目录](docs/workspace.md)。
 
 `main` 的默认训练入口是在线读取图片和 caption、编码、CLEAR 微调及独立验证。完整说明见 [FLUX KDA](flux_kda/README.md)，八卡配置见 [H800 4K 配置](flux_kda/configs/h800-8gpu-4k.json)。修改配置中的模型、资源和数据路径后运行：
 
@@ -12,6 +12,8 @@ OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 
 配置为每卡 batch 4、累积 1、50000 步，每 2000 步保存最新断点并生成 4K 验证图。数据量自动统计，使用 PiD 官方多分辨率桶，图像及文本不预缓存。显存优化可选，目标 H800 配置的完整训练峰值尚未实测。
 
+训练入口及脚本分类见 [scripts/README.md](scripts/README.md)。
+
 ## PixelDiT-T2I / QDM Halo2 等已有实验
 
 QDM Halo2 分支名为 `QDM-Halo2`。下文保留已有实验的入口和说明。
@@ -21,27 +23,11 @@ FLUX.3 的[8卡四组双卡实验及28层合并联合训练](flux3/docs/parallel
 
 FLUX.3 的 Hybrid Attention 迁移与 **14 组独立双层实验**也已包含在本仓库中，见 [FLUX.3 使用说明](flux3/README.md#14-组独立双层实验)。每组仅替换相邻两层，串行执行 A1/A2/B 各 50 步，B 结束后生成 10 张 2K 验证图。
 
-本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。PixelDiT 入口默认恢复四象限远程分支图像 Q/K 的二维 RoPE，使用独立的 `outputs/pixeldit-t2i-qdm-halo2-rope` 目录从原始权重训练。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](docs/pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
+本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。PixelDiT 入口默认恢复四象限远程分支图像 Q/K 的二维 RoPE，使用独立的 `../experiment/pixeldit-t2i-qdm-halo2-rope` 目录从原始权重训练。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](docs/pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
 
 可选执行 [原始 PixelDiT 合成数据 A1 对照](docs/pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
 
 原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支；**全量数据 4K 训练也已合入当前 main**。已有 50K 导出包的服务器可以自动补齐数据、构建缓存，再串行运行 A1／A2／B，八卡配置和完整命令见 [PiD-QDM 4K 跨服务器训练](docs/pid-qdm-4k-remote.md)。
-
-## DeCo-QDM
-
-DeCo 的 Local Softmax + Halo2 + QDM 改造位于 `deco/`，包含资源下载、BLIP3o 数据索引与文本缓存、A1/A2/B 三阶段训练、断点恢复和批量推理。使用独立的 `deco-qdm` 环境，完整命令见 [DeCo 使用说明](deco/README.md)。
-
-## PixArt-Σ 数据生成与迁移
-
-八卡、每卡 batch 2 的生成脚本，以及模型下载、数据打包和跨服务器断点续生成命令，见 [PixArt 数据生成说明](grafting/tools/README-pixart.md)。
-
-# A: QDM + Halo Window
-
-This local research branch changes only QDM's image Local Softmax visibility. Four fixed-quadrant memory states, native image/text RoPE in the Softmax path, global text queries, shared pretrained projections, two PiT blocks and the original distillation objectives remain unchanged. Start A1 from the official undistilled PiD v1.5 FLUX weights; A2 loads this run's A1 and B loads this run's A2. Existing QDM fine-tuned weights are not used for this experiment.
-
-Each nonoverlapping 8x8 query group reads a 12x12 image K/V neighborhood at halo=2, plus text K/V in the **same Softmax**. Only the query center is written back, once per token. True image-edge padding is masked. `--local-halo 0` reproduces the original visibility; halo1/2/4 are configurable.
-
-New local layouts are saved in configuration/checkpoint metadata and gallery identity. Resume and stage transitions reject different layouts; legacy checkpoints without layout fields mean the original fixed window. Weights and tensor shapes are unchanged by the new masks. `--local-chunk` controls window batching (default16) without changing visibility.
 
 ## Three-stage training
 
@@ -53,10 +39,10 @@ export PID_WEIGHTS_ROOT="$HOME/huggingface_ckpts"
 export PID_INDEX_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_index"
 export PID_VDN_SUBSET_ROOT="$HOME/dataset/MultiAspect-4K-1M/pid_vdn_subsets"
 export PID_TEXT_CACHE_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_text_cache"
-export PID_GALLERY_ROOT="$HOME/code/PiD-Linear/outputs/linear-pid/assets"
-export PID_QDM_RUN="$HOME/code/PiD-Linear/outputs/pid-qdm-halo2"
+export PID_GALLERY_ROOT="$HOME/code/PiD-Linear/../experiment/linear-pid/assets"
+export PID_QDM_RUN="$HOME/code/PiD-Linear/../experiment/pid-qdm-halo2"
 # Run from this branch checkout. Choose the GPUs currently available to you.
-GPU_IDS=1,2,3 CPU_THREADS=1 bash scripts/train_qdm_halo_repeat.sh \
+GPU_IDS=1,2,3 CPU_THREADS=1 bash scripts/train_adapt.sh --config configs/training/pid-qdm.json --mode repeat \
   --output-root "$PID_QDM_RUN" --weights-root "$PID_WEIGHTS_ROOT" \
   --index-root "$PID_INDEX_ROOT" --subset-root "$PID_VDN_SUBSET_ROOT" \
   --text-cache-root "$PID_TEXT_CACHE_ROOT" --gallery-root "$PID_GALLERY_ROOT"
@@ -74,16 +60,16 @@ The controller saves and exits near20minutes, then starts fresh training and con
 
 ```bash
 conda activate linear-pid
-bash scripts/train_pid_vdn_repeat.sh --output-root "$PID_QDM_RUN" --status
+bash scripts/train_adapt.sh --config configs/training/pid-vdn.json --mode repeat --output-root "$PID_QDM_RUN" --status
 tail -f "$PID_QDM_RUN/repeat/latest-training.log"
-bash scripts/train_pid_vdn_repeat.sh --output-root "$PID_QDM_RUN" --stop
+bash scripts/train_adapt.sh --config configs/training/pid-vdn.json --mode repeat --output-root "$PID_QDM_RUN" --stop
 ```
 
 Repeat the original launch command to resume a deliberately stopped run. For foreground single-stage training use the existing entry, for example:
 
 ```bash
 conda activate linear-pid
-GPU_IDS=1,2 CPU_THREADS=1 bash scripts/train_pid_vdn.sh \
+GPU_IDS=1,2 CPU_THREADS=1 bash scripts/train_adapt.sh \
   --stage a1 --memory-mode fixed4 --local-mode halo --local-halo 2 \
   --batch-size 4 --grad-accum 1 --effective-batch 8 --resume auto \
   --output-root "$PID_QDM_RUN" --weights-root "$PID_WEIGHTS_ROOT" \
@@ -103,19 +89,17 @@ CUDA_VISIBLE_DEVICES=1 python -m pid._src.vdn_pid.evaluation \
   --output-dir "$PID_QDM_RUN/inference"
 ```
 
-## Single-node Slurm training (4 GPUs)
+## Slurm training
 
-Submit from this branch checkout. A1 uses batch4, accumulation1 (effective16), while A2/B use batch4, accumulation2 (effective32). Stage budgets remain500/1000/10000 updates; each stage completes training and its validation before the next starts in a fresh process. The allocation lasts at most6days and has no node01 restart timer. An existing same-layout run resumes; changing GPU count records the effective-batch change without resetting the optimizer.
+使用共用模板，通过提交参数配置节点和 GPU，通过训练参数配置 batch、累积与阶段。输出目录由 `RUN_OUTPUT` 指定：
 
 ```bash
-conda activate linear-pid
-export PID_QDM_REPO_ROOT="$PWD"
-export PID_QDM_RUN="$HOME/code/PiD-Linear/outputs/pid-qdm-halo2"
-mkdir -p "$PID_QDM_RUN/slurm"
-sbatch --chdir="$PWD" --output="$PID_QDM_RUN/slurm/%x-%j.out" scripts/train_qdm_halo_4gpu.slurm
+RUN_OUTPUT=../experiment/pid-qdm sbatch --nodes=1 --gpus-per-node=4 \
+  scripts/train.slurm --config configs/training/pid-qdm.json \
+  --stage all --batch-size 4 --grad-accum 2 --resume auto
 ```
 
-Re-submit the same command to resume an interrupted allocation. Finished and validated stages are skipped; a failure or incomplete validation prevents advancing. Checkpoint and validation cadence is unchanged from the table above. A scheduler warning requests boundary saves30minutes before the6day limit. OOM exits without changing the requested batch. SwanLab remains offline. The submission does not start the node01 background controller.
+模板使用当前环境，在调度器终止预警时请求保存。多机提交和其他入口见 [训练脚本说明](scripts/README.md)。
 
 ## Original data/resource setup reference
 
@@ -240,7 +224,7 @@ export PID_TEXT_CACHE_ROOT="$PID_TRAINING_ROOT/text_cache"
 ```bash
 conda activate linear-pid
 GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
-bash scripts/train_pid_vdn_fixed4.sh --dry-run
+python -m pid._src.vdn_pid.pipeline --dry-run
 ```
 
 单节点 8 卡正式训练，使用新的实验目录：
@@ -248,19 +232,19 @@ bash scripts/train_pid_vdn_fixed4.sh --dry-run
 ```bash
 conda activate linear-pid
 GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
-bash scripts/train_pid_vdn_fixed4.sh \
-  --workers 2 --threads 1 --output-root outputs/pid-vdn-fixed4-8gpu
+python -m pid._src.vdn_pid.pipeline \
+  --workers 2 --threads 1 --output-root ../experiment/pid-vdn-fixed4-8gpu
 ```
 
 后台运行可用下面的命令替代上一条：
 
 ```bash
 conda activate linear-pid
-mkdir -p outputs/pid-vdn-fixed4-8gpu
+mkdir -p ../experiment/pid-vdn-fixed4-8gpu
 nohup env GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
-  bash scripts/train_pid_vdn_fixed4.sh \
-  --workers 2 --threads 1 --output-root outputs/pid-vdn-fixed4-8gpu \
-  > outputs/pid-vdn-fixed4-8gpu/pipeline.log 2>&1 &
+  python -m pid._src.vdn_pid.pipeline \
+  --workers 2 --threads 1 --output-root ../experiment/pid-vdn-fixed4-8gpu \
+  > ../experiment/pid-vdn-fixed4-8gpu/pipeline.log 2>&1 &
 ```
 
 失败或暂停不会进入后续阶段。重复同一命令，会跳过已完成阶段，恢复当前阶段的权重、优化器、scheduler、随机状态及数据位置。已完成阶段的架构、batch、累积、目标 step 或保存、验证周期不同会被拒绝，不能把旧 500-step A1 当成新 1,000-step A1。
@@ -276,14 +260,14 @@ conda activate linear-pid
 # 节点 0
 NNODES=2 NODE_RANK=0 MASTER_ADDR=node0 MASTER_PORT=29583 \
 GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-bash scripts/train_pid_vdn_fixed4.sh --workers 2 \
-  --output-root outputs/pid-vdn-fixed4-8gpu
+python -m pid._src.vdn_pid.pipeline --workers 2 \
+  --output-root ../experiment/pid-vdn-fixed4-8gpu
 
 # 节点 1：在另一台节点执行
 NNODES=2 NODE_RANK=1 MASTER_ADDR=node0 MASTER_PORT=29583 \
 GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-bash scripts/train_pid_vdn_fixed4.sh --workers 2 \
-  --output-root outputs/pid-vdn-fixed4-8gpu
+python -m pid._src.vdn_pid.pipeline --workers 2 \
+  --output-root ../experiment/pid-vdn-fixed4-8gpu
 ```
 
 导入的 50K 索引重新编号了行号，上述步骤用于按新配置开始完整实验。若搬本流程已有断点，同时搬输出目录和已导入索引；原百万行索引创建的旧断点不能直接配重编号索引。
@@ -295,10 +279,10 @@ checkpoint 记录 `fixed4` 结构，推理自动重建。固定条件推理需�
 ```bash
 conda activate linear-pid
 GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/sample_pid_vdn.sh \
-  --checkpoint outputs/pid-vdn-fixed4-8gpu/b/checkpoints/SELECTED_CHECKPOINT \
+  --checkpoint ../experiment/pid-vdn-fixed4-8gpu/b/checkpoints/SELECTED_CHECKPOINT \
   --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
   --gallery-root "$PID_GALLERY_ROOT" --suite qualitative --include-4k \
-  --output-dir outputs/pid-vdn-fixed4-8gpu/inference
+  --output-dir ../experiment/pid-vdn-fixed4-8gpu/inference
 ```
 
 输出原尺寸图像、局部裁剪、caption、seed、参数和耗时。多卡按图像分工，重复命令跳过已完成图像。增量 checkpoint 必须配合同一原始 PiD 基础权重。数据、模型、缓存、输出与本地测试均不上传 Git。

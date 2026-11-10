@@ -61,12 +61,12 @@ CUDA_VISIBLE_DEVICES=0 "$PYTHON" -m flux_kda.train \
   --data-mode cached --family flux2 --weights "$HOME/huggingface_ckpts/FLUX.2-klein-base-4B" \
   --subset-root "$HOME/dataset/CLEAR-FLUX2-klein-base-4B-10K" \
   --cache-root "$HOME/dataset/CLEAR-FLUX2-klein-base-4B-10K/flux2_diffsynth_sliding11_cache" \
-  --output outputs/flux2-stock-kda-clear --steps 1000
+  --output ../experiment/flux2-stock-kda-clear --steps 1000
 
 CUDA_VISIBLE_DEVICES=0 "$PYTHON" -m flux_kda.train \
   --data-mode cached --family flux3 --weights "$HOME/huggingface_ckpts/flux-3-image-klein-base/model.safetensors" \
   --subset-root /path/to/subset --cache-root /path/to/cache --subset-size 20000 \
-  --output outputs/flux3-stock-kda-clear --steps 1000
+  --output ../experiment/flux3-stock-kda-clear --steps 1000
 ```
 
 FLUX3 缓存模式支持 `flux3_qdm.data.CachedDataset` 和 CLEAR CSV 格式。使用 `--shard-optimizer --gradient-checkpointing` 显式启用原有显存配置，多卡通过 `python -m torch.distributed.run --nproc_per_node=N -m flux_kda.train ...` 启动。通过 `--resume` 恢复。架构标识为 `sliding-stock-fla-kda-v2`。
@@ -84,19 +84,19 @@ node01 的 FLUX3 入口为 `bash flux_kda/train_flux3_node01.sh`：GPU 1/2/3、�
 ```bash
 CUDA_VISIBLE_DEVICES=0 "$PYTHON" -m flux_kda.benchmark \
   --family flux2 --weights "$HOME/huggingface_ckpts/FLUX.2-klein-base-4B" \
-  --size 2048 --steps 20 --cfg 3.5 --output outputs/stock-kda-speed/flux2-2k
+  --size 2048 --steps 20 --cfg 3.5 --output ../experiment/stock-kda-speed/flux2-2k
 
 CUDA_VISIBLE_DEVICES=1 "$PYTHON" -m flux_kda.benchmark \
   --family flux3 --weights "$HOME/huggingface_ckpts/flux-3-image-klein-base" \
-  --size 2048 --steps 20 --cfg 3.5 --output outputs/stock-kda-speed/flux3-2k
+  --size 2048 --steps 20 --cfg 3.5 --output ../experiment/stock-kda-speed/flux3-2k
 
 CUDA_VISIBLE_DEVICES=2 "$PYTHON" -m flux_kda.benchmark \
   --family flux3 --weights "$HOME/huggingface_ckpts/flux-3-image-klein-base" \
-  --size 4096 --steps 20 --cfg 3.5 --variant original --output outputs/stock-kda-speed/flux3-4k-original
+  --size 4096 --steps 20 --cfg 3.5 --variant original --output ../experiment/stock-kda-speed/flux3-4k-original
 
 CUDA_VISIBLE_DEVICES=3 "$PYTHON" -m flux_kda.benchmark \
   --family flux3 --weights "$HOME/huggingface_ckpts/flux-3-image-klein-base" \
-  --size 4096 --steps 20 --cfg 3.5 --variant kda --output outputs/stock-kda-speed/flux3-4k-kda
+  --size 4096 --steps 20 --cfg 3.5 --variant kda --output ../experiment/stock-kda-speed/flux3-4k-kda
 ```
 
 每个版本先执行一次 denoiser forward 预热。CUDA 同步的采样、VAE 解码分别计时，二者相加为生成时间；不包括文本编码、权重加载、首次编译和 PNG 写盘。保存原尺寸图片、latent 和 JSON 指标。

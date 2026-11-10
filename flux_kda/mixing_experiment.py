@@ -12,8 +12,8 @@ import sys
 import time
 
 REPO=Path(__file__).resolve().parents[1]
-ROOT=REPO/'outputs/flux3-mixing-ab'
-SOURCE=REPO/'outputs/flux3-stock-kda-clear-node01-bs1'
+ROOT=REPO/'../experiment/flux3-mixing-ab'
+SOURCE=REPO/'../experiment/flux3-stock-kda-clear-node01-bs1'
 PYTHON=sys.executable
 ENV=dict(os.environ,PYTHONPATH=f'{REPO}:{REPO}/flux2:{REPO}/flux3',OMP_NUM_THREADS='4',
          FLA_DISABLE_TENSOR_CACHE='1',PYTORCH_ALLOC_CONF='expandable_segments:True')
@@ -33,7 +33,7 @@ def prepare():
         (SOURCE/'STOP').touch()
     start=ROOT/'start';start.mkdir(exist_ok=True)
     if not (start/'latest.pt').exists():
-        snapshot=REPO/'outputs/flux3-step600-1k-samples/checkpoint.pt'
+        snapshot=REPO/'../experiment/flux3-step600-1k-samples/checkpoint.pt'
         assert step(snapshot)==600
         os.link(snapshot,start/'latest.pt')
     for rank in range(3):
@@ -62,11 +62,11 @@ def run(lock_fd):
             with (arm/'run.log').open('a') as log:
                 subprocess.run(command,cwd=REPO,env=dict(ENV,CUDA_VISIBLE_DEVICES='1,2,3'),
                     stdout=log,stderr=subprocess.STDOUT,pass_fds=(lock_fd,),check=True)
-        manifest=json.loads((REPO/'outputs/flux3-step600-1k-samples/manifest.json').read_text())
+        manifest=json.loads((REPO/'../experiment/flux3-step600-1k-samples/manifest.json').read_text())
         def generate(index):
             directory=arm/f'images/{index+1:02d}';directory.mkdir(parents=True,exist_ok=True)
             if (directory/'kda.json').exists():return
-            shutil.copyfile(REPO/f'outputs/flux3-step600-1k-samples/{index+1:02d}/conditions.pt',directory/'conditions.pt')
+            shutil.copyfile(REPO/f'../experiment/flux3-step600-1k-samples/{index+1:02d}/conditions.pt',directory/'conditions.pt')
             command=[PYTHON,'-m','flux_kda.benchmark','--family','flux3','--weights',WEIGHTS,
                      '--checkpoint',str(arm/'latest.pt'),'--variant','kda','--size','1024',
                      '--steps','20','--cfg','3.5','--seed','0','--prompt',manifest['images'][index]['prompt'],

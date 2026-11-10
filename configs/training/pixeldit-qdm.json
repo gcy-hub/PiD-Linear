@@ -1,0 +1,19 @@
+[
+  "--backbone",
+  "pixeldit_t2i",
+  "--resolution",
+  "1024",
+  "--flow-shift",
+  "4",
+  "--shift-base-size",
+  "1024",
+  "--memory-mode",
+  "fixed4",
+  "--local-mode",
+  "halo",
+  "--local-halo",
+  "2",
+  "--region-size",
+  "8",
+  "--remote-rope"
+]

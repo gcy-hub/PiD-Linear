@@ -152,7 +152,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights-root", default="weights")
     parser.add_argument("--index-root", default="dataset/MultiAspect-4K-1M/linear_pid_index")
-    parser.add_argument("--output-root", default="outputs/linear-pid/assets")
+    parser.add_argument("--output-root", default="../experiment/linear-pid/assets")
     parser.add_argument("--real-count", type=int, default=64)
     parser.add_argument("--generated-count", type=int, default=32)
     parser.add_argument("--four-k-count", type=int, default=8)

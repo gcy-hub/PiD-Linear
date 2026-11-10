@@ -1,0 +1,10 @@
+[
+  "--memory-mode",
+  "fixed4",
+  "--local-mode",
+  "sliding",
+  "--sliding-kernel-size",
+  "11",
+  "--sliding-backend",
+  "natten"
+]

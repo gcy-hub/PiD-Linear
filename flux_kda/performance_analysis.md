@@ -46,4 +46,4 @@ FlexAttention 已实际减少工作量，没有证据表明局部 attention 退�
 2. 改进二维局部 attention 的分块/布局，减少一维块对二维窗口的覆盖冗余；必须保持图像与文本联合 softmax 语义。
 3. 若 2K 仍无收益，再评估减少 KDA 层频率或分支宽度。这改变模型结构，应与单纯算子优化区分。
 
-原始日志：`outputs/kda-speed/operator-profile.log`、`outputs/kda-speed/operator-flux3-shapes.log`。短测脚本：`/tmp/profile_crosslayer_kda.py`、`/tmp/profile_crosslayer_flux3_shapes.py`。单层输入为同尺寸随机张量；结果用于定位成本，不是新的整图生成测量。
+原始日志：`../experiment/kda-speed/operator-profile.log`、`../experiment/kda-speed/operator-flux3-shapes.log`。短测脚本：`/tmp/profile_crosslayer_kda.py`、`/tmp/profile_crosslayer_flux3_shapes.py`。单层输入为同尺寸随机张量；结果用于定位成本，不是新的整图生成测量。

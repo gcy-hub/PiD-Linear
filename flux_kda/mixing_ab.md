@@ -21,7 +21,7 @@ On the two independent samples, calibration reduces sampled text mass from **45.
 
 End-to-end evaluation uses the same three prompts as the step-600 samples: London bus, cafe, lighthouse; seed 0, 1024×1024, 20 denoising steps, CFG 3.5. Each arm generates three images after 100 updates.
 
-Outputs are under `outputs/flux3-mixing-ab/`: `diagnostics/`, `heldout-check/`, `start/`, `baseline/`, `calibrated/`, and the final `comparison.jpg`. `mixing_experiment.py --check` is scheduled by node01 cron. It waits for at least 40960 MiB free on each selected GPU, avoids duplicate workers with an inherited lock, resumes published checkpoints after process cleanup, and stops on explicit errors. The original training launcher is paused while the experiment owns its checkpoint and GPU allocation, then released after completion.
+Outputs are under `../experiment/flux3-mixing-ab/`: `diagnostics/`, `heldout-check/`, `start/`, `baseline/`, `calibrated/`, and the final `comparison.jpg`. `mixing_experiment.py --check` is scheduled by node01 cron. It waits for at least 40960 MiB free on each selected GPU, avoids duplicate workers with an inherited lock, resumes published checkpoints after process cleanup, and stops on explicit errors. The original training launcher is paused while the experiment owns its checkpoint and GPU allocation, then released after completion.
 
 ## Paired 100-step results
 

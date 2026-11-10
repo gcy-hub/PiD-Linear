@@ -30,7 +30,7 @@ def main(argv=None):
     parser.add_argument('--checkpoint', help='Complete QDM checkpoint directory; omit for original PixelDiT')
     parser.add_argument('--weights-root', default='weights')
     parser.add_argument('--teacher-checkpoint', default='')
-    parser.add_argument('--output-dir', default='outputs/pixeldit-t2i-qdm-halo2/prompts')
+    parser.add_argument('--output-dir', default='../experiment/pixeldit-t2i-qdm-halo2/prompts')
     parser.add_argument('--compare-original', action='store_true')
     parser.add_argument('--height', type=int, default=1024)
     parser.add_argument('--width', type=int, default=1024)

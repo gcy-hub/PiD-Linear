@@ -31,7 +31,7 @@ def parse_args(argv=None):
     p.add_argument('--dataset-root', type=Path, required=True, help='Full dataset destination, separate from the 50K export')
     p.add_argument('--subset-root', type=Path, help='Extracted pid-vdn-50k export to reuse without copying image bytes')
     p.add_argument('--weights-root', type=Path, required=True)
-    p.add_argument('--output-root', type=Path, default=Path('outputs/pid-qdm-halo2-4k-8gpu'))
+    p.add_argument('--output-root', type=Path, default=Path('../experiment/pid-qdm-halo2-4k-8gpu'))
     p.add_argument('--gpu-ids', default=os.getenv('GPU_IDS', '0,1,2,3,4,5,6,7'))
     p.add_argument('--batch-size', type=int, choices=(4, 8), default=8)
     p.add_argument('--fallback-batch-size', type=int, choices=(4,), default=4)
@@ -146,7 +146,7 @@ def distributed_command(a, module, *arguments):
 def training_command(a, stage, batch):
     steps, interval = SCHEDULE[stage]
     names = ','.join(f'{c["kind"]}_{c["ordinal"]:03d}' for c in json.loads(CASE_SPEC.read_text())['cases'])
-    return distributed_command(a, 'scripts.train_pid_vdn',
+    return distributed_command(a, 'pid._src.vdn_pid.training',
         '--stage', stage, '--backbone', 'pid', '--resume', 'auto', '--allow-batch-change',
         '--weights-root', a.weights_root, '--index-root', a.dataset_root/'linear_pid_index',
         '--text-cache-root', a.dataset_root/'linear_pid_text_cache', '--training-data', 'full',

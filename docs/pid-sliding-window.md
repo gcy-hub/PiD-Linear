@@ -28,8 +28,8 @@ export PID_TEXT_CACHE_ROOT="$DATASET_ROOT/linear_pid_text_cache"
 export PID_GALLERY_ROOT="$VALIDATION_ASSETS"
 
 GPU_IDS=1,2,3 CPU_THREADS=1 \
-bash scripts/train_pid_sliding.sh \
-  --output-root outputs/pid-qdm-sliding11-4k
+bash scripts/train_adapt.sh --config configs/training/pid-sliding.json --mode repeat \
+  --output-root ../experiment/pid-qdm-sliding11-4k
 ```
 
 默认仅运行A1，从原始PiD v1.5 FLUX未蒸馏权重初始化新增QDM，不继承B阶段权重。训练使用现有官方4K多长宽比分桶（native 3840档位族，可包含4096长边），保持原缩放、裁剪、动态shift和条件构造。
@@ -53,11 +53,11 @@ bash scripts/train_pid_sliding.sh \
 
 ```bash
 # 状态与日志
-cat outputs/pid-qdm-sliding11-4k/repeat/state.json
-tail -f outputs/pid-qdm-sliding11-4k/repeat/latest-training.log
+cat ../experiment/pid-qdm-sliding11-4k/repeat/state.json
+tail -f ../experiment/pid-qdm-sliding11-4k/repeat/latest-training.log
 
 # 保存并停止，禁止自动重启
-python scripts/repeat_pid_vdn.py --output-root outputs/pid-qdm-sliding11-4k --stop
+python scripts/repeat_pid_vdn.py --output-root ../experiment/pid-qdm-sliding11-4k --stop
 ```
 
 ## 等现有验证结束再切换
@@ -93,7 +93,7 @@ python -m pytest tests/vdn/test_sliding.py tests/vdn/test_sliding_handoff.py -q
 GPU_IDS=0 bash scripts/sample_pid_vdn.sh \
   --checkpoint "$SLIDING_CHECKPOINT" --gallery-root "$VALIDATION_ASSETS" \
   --weights-root "$MODEL_ROOT" --index-root "$DATASET_ROOT/linear_pid_index" \
-  --output-dir outputs/pid-qdm-sliding11-evaluation --suite qualitative
+  --output-dir ../experiment/pid-qdm-sliding11-evaluation --suite qualitative
 ```
 
 本地测试目录遵守仓库原有忽略规则，不包含于公开代码提交；当前环境留有这些测试。恢复时会核对Sliding kernel、stride及边缘语义，拒绝混用Halo或其他kernel的断点。

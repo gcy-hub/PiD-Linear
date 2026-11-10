@@ -39,7 +39,7 @@ def parse_args(argv=None):
     dataset=Path.home()/'dataset/MultiAspect-4K-1M'
     p.add_argument('--subset-root',default=os.getenv('FLUX3_SUBSET_ROOT',str(dataset/'pid_vdn_subsets')))
     p.add_argument('--cache-root',default=os.getenv('FLUX3_CACHE_ROOT',str(dataset/'flux3_qdm_cache')))
-    p.add_argument('--output-root',default='outputs/flux3-qdm')
+    p.add_argument('--output-root',default='../experiment/flux3-qdm')
     p.add_argument('--resume',default='auto')
     p.add_argument('--init-from',default='')
     p.add_argument('--a1-init-from',default='',help='Warm-start only A1, then load same-run A1/A2 parents for later stages')

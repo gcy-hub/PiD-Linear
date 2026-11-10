@@ -13,8 +13,8 @@ from flux3_qdm.runtime import GlobalSampler
 REPO=Path(__file__).resolve().parents[1]
 DATA=Path(os.environ.get('FLUX3_DATASET_ROOT', 'dataset/MultiAspect-4K-1M')).resolve()
 CACHE=DATA/'flux3_qdm_cache_80k_1k'
-ROOT=REPO/'outputs/flux3-80k-training-smoke'
-SOURCE=REPO/'outputs/flux3-stock-kda-clear-node01-bs1/latest.pt'
+ROOT=REPO/'../experiment/flux3-80k-training-smoke'
+SOURCE=REPO/'../experiment/flux3-stock-kda-clear-node01-bs1/latest.pt'
 
 
 def main():
