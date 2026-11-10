@@ -3,3 +3,10 @@ training:
   optimizer: adamw
   scheduler: cosine
   lr: 0.0001
+  weight_decay: 0.01
+  accumulation: 1
+  vdn:
+    a1: {steps: 200, warmup: 50, objective: relative_attention_mse}
+    a2: {steps: 500, warmup: 50, objective: teacher}
+    b: {steps: 2000, warmup: 200, objective: teacher}
+    lora: {rank: 64, alpha: 64}

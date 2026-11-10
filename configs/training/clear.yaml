@@ -3,3 +3,7 @@ training:
   optimizer: prodigy
   scheduler: constant
   lr: 1.0
+  weight_decay: 0.0001
+  accumulation: 1
+  fp32_updates: true
+  loss: {fm: 1.0, prediction: 0.5, feature: 0.5}
