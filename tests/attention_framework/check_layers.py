@@ -97,16 +97,19 @@ def main():
                     site.callback = None
                 else:
                     site.teacher, site.capture = False, True
-                    value = call()
-                    values = value if isinstance(value, tuple) else (value,)
-                    loss = sum(v.float().square().mean() for v in values)
                     if stage == 'clear':
+                        call()
                         assert site.feature is not None and site.feature.requires_grad
-                        # Backpropagate feature KD alone to detect a missing memory tap.
-                        site.feature.float().square().mean().backward(retain_graph=True)
+                        # Check feature KD alone, then output loss on an independent graph.
+                        site.feature.float().square().mean().backward()
                         branch = [r.parameter.grad for r in roles if r.role == 'branch']
                         if branch:
                             assert any(g is not None and g.abs().sum() > 0 for g in branch)
+                        assert all(torch.isfinite(r.parameter.grad).all() for r in roles if r.parameter.grad is not None)
+                        adapter.zero_grad(set_to_none=True)
+                    value = call()
+                    values = value if isinstance(value, tuple) else (value,)
+                    loss = sum(v.float().square().mean() for v in values)
                     loss.backward()
                 assert any(r.parameter.grad is not None for r in roles)
                 assert all(torch.isfinite(r.parameter.grad).all() for r in roles if r.parameter.grad is not None)
