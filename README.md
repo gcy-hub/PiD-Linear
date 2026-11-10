@@ -1,288 +1,65 @@
-# FLUX3 Sliding + KDA
+# Attention 实验框架
 
-从仓库根目录运行命令，使用已激活环境中的 Python。模型、数据和实验输出路径通过配置或命令行传入，支持绝对路径。默认输出到 `../experiment/`，不在仓库内建立输出链接。每个实验使用独立子目录保存断点、图片和日志。切换分支前先停止训练与验证。路径约定见 [工作目录](docs/workspace.md)。
+PiD、FLUX2、FLUX3 共用算法、数据生命周期和训练入口。基础模型配置指定架构、资源和原生采样；替换模型由同一基础配置、attention 配置和层选择组成。原生 `pid/` 与历史实验保留，旧 checkpoint 不迁移。历史命令见 [历史训练](docs/historical-training.md)。
 
-`main` 的默认训练入口是在线读取图片和 caption、编码、CLEAR 微调及独立验证。完整说明见 [FLUX KDA](flux_kda/README.md)，八卡配置见 [H800 4K 配置](flux_kda/configs/h800-8gpu-4k.json)。修改配置中的模型、资源和数据路径后运行：
+| 目录 | 职责 |
+|---|---|
+| `models/` | 原生模型加载、稳定层名、QKV/O、teacher、采样 |
+| `algorithms/` | 张量 attention 算子，不加载数据/模型或创建优化器 |
+| `data/` | manifest、官方桶、原生编码、图像/文本独立缓存 |
+| `training/` | 策略、精度、分布式、checkpoint 和验证进程边界 |
+| `attention_framework/`、`configs/` | 直接接口、OmegaConf 配置与校验 |
+| `scripts/`、`download/` | 薄入口、验收、显式下载 |
+| `pid/` | 保留的原生实现 |
 
-```bash
-export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
-OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-  python -m flux_kda.run --config flux_kda/configs/h800-8gpu-4k.json
-```
+依赖方向：训练组合模型、算法和数据；模型调用算法；数据管理编码器；算法不依赖训练策略。唯一 DiffSynth 运行时由模型适配器管理。
 
-配置为每卡 batch 4、累积 1、50000 步，每 2000 步保存最新断点并生成 4K 验证图。数据量自动统计，使用 PiD 官方多分辨率桶，图像及文本不预缓存。显存优化可选，目标 H800 配置的完整训练峰值尚未实测。
+| attention | PiD | FLUX2 | FLUX3 | 策略 |
+|---|---|---|---|---|
+| `cross_scan_kda` | 支持 | 支持 | 支持 | VDN / CLEAR |
+| `sliding_qdm` | 支持 | 支持 | 支持 | VDN / CLEAR |
+| `qdm_halo` | 支持 | 支持 | 支持 | VDN / CLEAR |
+| `clear` | 支持 | 支持 | 支持 | CLEAR |
 
-训练入口及脚本分类见 [scripts/README.md](scripts/README.md)。
+共 12 个模型/算法组合、21 个有效策略组合；CLEAR attention + VDN 明确拒绝。这是支持范围；实际验收状态见报告，不能从配置可解析推断 GPU 已通过。
 
-## PixelDiT-T2I / QDM Halo2 等已有实验
-
-QDM Halo2 分支名为 `QDM-Halo2`。下文保留已有实验的入口和说明。
-
-
-FLUX.3 的[8卡四组双卡实验及28层合并联合训练](flux3/docs/parallel-pairs.md)入口也已提供，使用现有50K数据及其20K子集。
-
-FLUX.3 的 Hybrid Attention 迁移与 **14 组独立双层实验**也已包含在本仓库中，见 [FLUX.3 使用说明](flux3/README.md#14-组独立双层实验)。每组仅替换相邻两层，串行执行 A1/A2/B 各 50 步，B 结束后生成 10 张 2K 验证图。
-
-本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。PixelDiT 入口默认恢复四象限远程分支图像 Q/K 的二维 RoPE，使用独立的 `../experiment/pixeldit-t2i-qdm-halo2-rope` 目录从原始权重训练。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](docs/pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
-
-可选执行 [原始 PixelDiT 合成数据 A1 对照](docs/pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
-
-原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支；**全量数据 4K 训练也已合入当前 main**。已有 50K 导出包的服务器可以自动补齐数据、构建缓存，再串行运行 A1／A2／B，八卡配置和完整命令见 [PiD-QDM 4K 跨服务器训练](docs/pid-qdm-4k-remote.md)。
-
-## Three-stage training
-
-Use the existing downloaded models, prepared20K/50K nested subsets, text cache and fixed validation assets. The base project preparation commands are retained below. Set locations for this server; do not copy training outputs into Git.
+从仓库根目录运行，Python 3.12 环境中安装 `pip install -e .`。训练所需 FLA、Prodigy 和模型编码依赖由所选实现要求；`scripts/setup_pid_env.sh` 保留现有 PiD 环境准备。训练不隐式下载。先确认 Hugging Face 访问权限，按 [下载说明](download/README.md) 准备本地权重及数据：
 
 ```bash
-conda activate linear-pid
-export PID_WEIGHTS_ROOT="$HOME/huggingface_ckpts"
-export PID_INDEX_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_index"
-export PID_VDN_SUBSET_ROOT="$HOME/dataset/MultiAspect-4K-1M/pid_vdn_subsets"
-export PID_TEXT_CACHE_ROOT="$HOME/dataset/MultiAspect-4K-1M/linear_pid_text_cache"
-export PID_GALLERY_ROOT="$HOME/code/PiD-Linear/../experiment/linear-pid/assets"
-export PID_QDM_RUN="$HOME/code/PiD-Linear/../experiment/pid-qdm-halo2"
-# Run from this branch checkout. Choose the GPUs currently available to you.
-GPU_IDS=1,2,3 CPU_THREADS=1 bash scripts/train_adapt.sh --config configs/training/pid-qdm.json --mode repeat \
-  --output-root "$PID_QDM_RUN" --weights-root "$PID_WEIGHTS_ROOT" \
-  --index-root "$PID_INDEX_ROOT" --subset-root "$PID_VDN_SUBSET_ROOT" \
-  --text-cache-root "$PID_TEXT_CACHE_ROOT" --gallery-root "$PID_GALLERY_ROOT"
+python download/download_models.py --models pid vae gemma --weights-root ./weights --workers 4
+python -m attention_framework.config --print-config \
+  --model-config configs/models/flux3.yaml \
+  --algorithm-config configs/algorithms/cross_scan_kda.yaml \
+  --training-config configs/training/clear.yaml \
+  --data-config configs/data/default.yaml
 ```
 
-The detached controller runs **A1→A2→B**, every GPU batch4, accumulation1, effective batch4×GPU count. `PID_QDM_BATCH` and `PID_QDM_ACCUM` can change the wrapper defaults. All new attention learning starts from official PiD, with frozen original weights. B adds zero-initialized rank64 Q/K/V/O LoRA; PiT remains frozen. No additional boundary loss or teacher model copy is introduced. Student/teacher share the existing training input and conditions; there is no CPU offload.
-
-|Stage|Updates|Data subset|Save|Validate|
-|---|---:|---:|---:|---|
-|A1|500|20K|50|At stage end|
-|A2|1000|20K|100|At stage end|
-|B|10000|50K|2000|Every2000 and stage end|
-
-The controller saves and exits near20minutes, then starts fresh training and controller processes from complete checkpoints. It preserves parameters, optimizer, scheduler, RNG, sampler position and SwanLab run information. Validation is also resumable. Stage completion requires the fixed gallery, so A2/B wait for preceding validation. Three stalled cycles or an unhandled failure stop retrying. No Slurm jobs are submitted.
+同一基础配置复用到不同算法，只替换 `--algorithm-config`：
 
 ```bash
-conda activate linear-pid
-bash scripts/train_adapt.sh --config configs/training/pid-vdn.json --mode repeat --output-root "$PID_QDM_RUN" --status
-tail -f "$PID_QDM_RUN/repeat/latest-training.log"
-bash scripts/train_adapt.sh --config configs/training/pid-vdn.json --mode repeat --output-root "$PID_QDM_RUN" --stop
+python -m training.run \
+  --model-config configs/models/flux3.yaml \
+  --algorithm-config configs/algorithms/sliding_qdm.yaml \
+  --training-config configs/training/clear.yaml \
+  --data-config configs/data/default.yaml \
+  paths.weights=./weights paths.dataset=./dataset/pid-vdn-80k \
+  data.manifest=./dataset/pid-vdn-80k/manifest.jsonl \
+  paths.output=../experiment/flux3-sliding \
+  'replacement.layers.early_image=[]' 'replacement.layers.joint=[0,4,8]' \
+  algorithm.local.window_size=15 training.batch_size=1 training.steps=20 \
+  runtime.gpus=4 training.accumulation=2 checkpoint.every=10 validation.every=10
 ```
 
-Repeat the original launch command to resume a deliberately stopped run. For foreground single-stage training use the existing entry, for example:
+权重/TE/tokenizer/VAE 资源在 `model.resources` 中设置，代表配置中的 null 必须填写为实际资源。换用 `configs/algorithms/cross_scan_kda.yaml` 即复用该基础模型进行 KDA 训练。PiD 层名为 `patch`，FLUX2 为 `double`/`single`，FLUX3 为 `early_image`/`joint`；组可选 `all` 或索引列表，未选层保留原生行为。KDA 扫描按原生全层序号轮换，部分替换不重新编号。
 
-```bash
-conda activate linear-pid
-GPU_IDS=1,2 CPU_THREADS=1 bash scripts/train_adapt.sh \
-  --stage a1 --memory-mode fixed4 --local-mode halo --local-halo 2 \
-  --batch-size 4 --grad-accum 1 --effective-batch 8 --resume auto \
-  --output-root "$PID_QDM_RUN" --weights-root "$PID_WEIGHTS_ROOT" \
-  --index-root "$PID_INDEX_ROOT" --subset-root "$PID_VDN_SUBSET_ROOT" \
-  --text-cache-root "$PID_TEXT_CACHE_ROOT" --gallery-root "$PID_GALLERY_ROOT" \
-  --workers 4 --threads 1
-```
+覆盖顺序为共享默认 → 模型 → 算法 → 策略 → 数据 → 命令行 dotlist。未知字段、非法窗口/层与策略组合在读取边界报错。相对运行路径按启动目录解析，manifest 内图像路径按 manifest 目录解析。默认输出 `../experiment/attention-framework`，所有资源/数据/输出路径可配。每卡 batch × world size × accumulation 得到全局 batch；上述例子为 8。
 
-Independent inference rebuilds the local layout from the checkpoint configuration, without a second resident teacher:
+VDN 参考 [官方源码 e262cb5](https://github.com/OpenVDN/vdn-minimax-h3/tree/e262cb5770b3dc992d4f44f251cd17bbfe0c4d8b)：A1 teacher detached 输入逐层反传，相对 MSE 比较图像 attention 的 post-O 输出；A2 端到端 teacher prediction MSE；B 加 gate 与 QKVO LoRA。A1/A2 训练 branch/必要 pooling；B 加 local_gate/lora。默认阶段步数 200/500/2000、warmup 50/50/200、LoRA rank=alpha=64 可覆盖。AdamW 角色分组与阶段切换属于训练策略。
 
-```bash
-conda activate linear-pid
-CUDA_VISIBLE_DEVICES=1 python -m pid._src.vdn_pid.evaluation \
-  --checkpoint "$PID_QDM_RUN/a1/checkpoints/COMPLETE_CHECKPOINT_DIRECTORY" \
-  --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
-  --gallery-root "$PID_GALLERY_ROOT" --suite qualitative \
-  --output-dir "$PID_QDM_RUN/inference"
-```
+CLEAR 参考 [官方源码 ddca131](https://github.com/Huage001/CLEAR/tree/ddca13160b7c2fe5d340c8a421db72b7bdaa6ba9)：圆形邻域、文本全局可见、可训练 K/V 池化；损失 FM + 0.5 prediction KD + 0.5 feature KD。训练 branch/local_gate/image_qkvo/pooling，冻结其余主干、TE/VAE，禁用 LoRA。默认 Prodigy、常数调度与 FP32 更新，避免 BF16 小更新舍入。官方 CLEAR 面向 FLUX1，VDN 面向视频；本项目显式适配图像模型和稳定层名。KDA/CLEAR feature KD 取 pre-O，QDM 取含 memory 的 post-O；teacher 取同位置并绕开 student 投影/LoRA。`../CLEAR` 是适配仓库，不是作者原版。
 
-## Slurm training
+数据准备与缓存语义、恢复、显存选项、扩展接口见 [使用流程](docs/attention-framework.md)。四卡验收入口及每项证据要求见 [验收](docs/attention-framework-acceptance.md)。入口索引见 [scripts](scripts/README.md)。
 
-使用共用模板，通过提交参数配置节点和 GPU，通过训练参数配置 batch、累积与阶段。输出目录由 `RUN_OUTPUT` 指定：
+## Limitations
 
-```bash
-RUN_OUTPUT=../experiment/pid-qdm sbatch --nodes=1 --gpus-per-node=4 \
-  scripts/train.slurm --config configs/training/pid-qdm.json \
-  --stage all --batch-size 4 --grad-accum 2 --resume auto
-```
-
-模板使用当前环境，在调度器终止预警时请求保存。多机提交和其他入口见 [训练脚本说明](scripts/README.md)。
-
-## Original data/resource setup reference
-
-# PiD：固定空间四象限记忆
-
-分支：`codex/spatially-disambiguated-delta-memory`。
-
-将 PiD 的 **14 层 MMDiT Attention** 改为 **局部 Softmax + 固定四象限记忆**，两层 PiT 保持原样。局部 Softmax 是互不重叠的 `8×8 token` 窗口，直接访问文本，保留图像与文本 Q/K 的 RoPE。记忆分支不使用 RoPE：图像 K/V 经 `5×5 DWConv`，四个象限分别联合求解记忆，每个 Q 只读所属象限；取消双向 VDA 的扫描和遗忘衰减，包含自身写入。
-
-这是需要重新恢复训练的研究结构，测速不代表已保持质量。详见 [研究说明](docs/research/spatial-delta-memory.md)。原双向 VDA 入口仍支持 `--memory-mode vda`；本页串行脚本固定使用 `fixed4`。
-
-## 1. 资源下载
-
-在新服务器拉取分支并安装环境。下文均在仓库根目录执行，路径可自行调整。
-
-```bash
-git clone --branch codex/spatially-disambiguated-delta-memory \
-  https://github.com/gcy-hub/PiD-Linear.git
-cd PiD-Linear
-bash scripts/setup_pid_env.sh
-conda activate linear-pid
-
-# Gemma 需要先在 Hugging Face 接受模型条款。
-HF_ENDPOINT=https://huggingface.co hf auth login
-python download/download_models.py --models pid vae gemma \
-  --weights-root ./weights --workers 4
-```
-
-| 资源 | 参考空间 | 用途 |
-| --- | ---: | --- |
-| PiD v1.5 FLUX 未蒸馏权重 | 2.61 GiB | 原始初始化、教师路径、增量 checkpoint 重建 |
-| FLUX VAE | 0.31 GiB | 编码训练图像的低分辨率条件 |
-| Gemma 2 2B IT | 4.89 GiB | 准备文本缓存，或训练时在线编码 |
-| `pid-vdn-50k.tar` | 约 166 GiB | 50K 图片与 caption，内含 A1/A2 的 20K 名单 |
-| 固定验证条件包 | 约 334 MiB | 已编码的验证文本、latent、mask、seed 与来源索引信息 |
-| 可选 50K 文本缓存 | 约 64.4 GiB | 避免训练时常驻 Gemma |
-
-图片包解压后还需约一份同等大小的空间。包内没有训练索引、文本缓存、模型或验证条件。已有模型可直接设置 `PID_WEIGHTS_ROOT`。复用验证条件时不需要 Z-Image-Turbo；重新从 prompt 生成 latent 才需要它，下载方法见 [下载说明](download/README.md)。
-
-## 2. 训练准备
-
-### 原服务器：导出固定验证条件
-
-只需导出一次，再把这个小包传到新服务器。验证条件已经编码，不需要搬原始验证图片，也不需要重新运行 Z-Image-Turbo。
-
-```bash
-conda activate linear-pid
-python -m pid._src.vdn_pid.portable_data export-validation \
-  --index-root "$PID_INDEX_ROOT" --gallery-root "$PID_GALLERY_ROOT" \
-  --output ./pid-vdn-validation.tar
-```
-
-这里的两个环境变量指向原服务器已有索引和验证条件目录。导出会检查来源指纹与条件文件哈希。
-
-### 新服务器：解压、建立训练索引
-
-填写两个包的位置。导入不复制图片、不重新抽样，保留原 20K/50K 成员关系，生成 loader 可读的 manifest、mmap 偏移与桶索引。
-
-```bash
-conda activate linear-pid
-export DATA_ARCHIVE=./pid-vdn-50k.tar
-export VALIDATION_ARCHIVE=./pid-vdn-validation.tar
-mkdir -p dataset runtime/pid-vdn-validation
-tar -xf "$DATA_ARCHIVE" -C dataset
-tar -xf "$VALIDATION_ARCHIVE" -C runtime/pid-vdn-validation
-
-export PID_DATA_ROOT="$PWD/dataset/pid-vdn-50k"
-export PID_TRAINING_ROOT="$PID_DATA_ROOT/training"
-python -m pid._src.vdn_pid.portable_data import \
-  --package-root "$PID_DATA_ROOT" --output-root "$PID_TRAINING_ROOT" \
-  --source-index runtime/pid-vdn-validation/source_index.json \
-  --workers 4 --resume
-
-export PID_WEIGHTS_ROOT="$PWD/weights"
-export PID_INDEX_ROOT="$PID_TRAINING_ROOT/index"
-export PID_VDN_SUBSET_ROOT="$PID_TRAINING_ROOT/subsets"
-export PID_GALLERY_ROOT="$PWD/runtime/pid-vdn-validation/gallery"
-export PID_TEXT_CACHE_ROOT=""
-```
-
-导入检查图片路径、ID、caption、桶与成员关系；完整解码由训练 loader 执行。`--resume` 跳过已完成且输入一致的结果。来源索引必须能够复现包内子集指纹，不能随意配对其他数据。
-
-| 结果 | 作用 |
-| --- | --- |
-| `training/index/` | 50K manifest、偏移、分桶；图片路径相对于包位置解析 |
-| `training/subsets/20000/` | A1/A2 共用的原 20K 成员 |
-| `training/subsets/50000/` | B 使用的全部 50K 成员 |
-| `training/prompts/data_jsons/` | 保留原 ID 的 caption 元数据，供缓存工具读取 |
-| `runtime/pid-vdn-validation/gallery/` | 固定 2K/4K 条件，不依赖旧服务器的图片路径 |
-
-### 可选：提前缓存 50K 文本
-
-不执行也能训练：保持 `PID_TEXT_CACHE_ROOT=""`，训练时在线加载 Gemma。缓存可减少训练显存与文本编码开销；示例使用单节点 8 卡，可调整 GPU 列表和进程数。
-
-```bash
-conda activate linear-pid
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 OMP_NUM_THREADS=1 \
-torchrun --standalone --nproc_per_node=8 -m scripts.prepare_pid_text_cache \
-  --dataset-root "$PID_TRAINING_ROOT/prompts" \
-  --output-root "$PID_TRAINING_ROOT/text_cache" \
-  --weights-root "$PID_WEIGHTS_ROOT" --batch-size 8 \
-  --workers 2 --threads 1 --max-seconds 0 --resume
-export PID_TEXT_CACHE_ROOT="$PID_TRAINING_ROOT/text_cache"
-```
-
-中断后重复命令续做；也可以搬完整缓存后直接设置目录。每次新终端启动训练前，需重新设置上述路径环境变量。
-
-## 3. 正式训练：串行 A1 → A2 → B
-
-三阶段共享冻结的原始 PiD 主干执行教师计算，不常驻第二套完整教师，不使用 CPU offload 或 EMA。A1 逐层对齐 Attention 输出，A2 对齐整网预测，B 增加 Q/K/V/O LoRA 并解冻 Softmax Gate。四象限未使用的衰减门冻结。
-
-| 阶段 | 每卡 batch | GPU 总数 | 累积 | 有效 batch | 阶段总 step | 保存、验证周期 | 数据 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| A1 | 2 | 8 | 1 | 16 | 1,000 | 500 | 20K |
-| A2 | 4 | 8 | 1 | 32 | 4,000 | 2,000 | 同一批 20K |
-| B | 8 | 8 | 2 | 128 | 20,000 | 2,000 | 50K |
-
-合计 25,000 次更新。A1 从原始 PiD 初始化新增模块；A2 在 A1 训练与验证完成后加载其最新完整 checkpoint，B 同样加载 A2。阶段切换保留参数，重建优化器和 scheduler。
-
-先查看三个阶段的完整配置，不占用 GPU：
-
-```bash
-conda activate linear-pid
-GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
-python -m pid._src.vdn_pid.pipeline --dry-run
-```
-
-单节点 8 卡正式训练，使用新的实验目录：
-
-```bash
-conda activate linear-pid
-GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
-python -m pid._src.vdn_pid.pipeline \
-  --workers 2 --threads 1 --output-root ../experiment/pid-vdn-fixed4-8gpu
-```
-
-后台运行可用下面的命令替代上一条：
-
-```bash
-conda activate linear-pid
-mkdir -p ../experiment/pid-vdn-fixed4-8gpu
-nohup env GPU_IDS=0,1,2,3,4,5,6,7 CPU_THREADS=1 \
-  python -m pid._src.vdn_pid.pipeline \
-  --workers 2 --threads 1 --output-root ../experiment/pid-vdn-fixed4-8gpu \
-  > ../experiment/pid-vdn-fixed4-8gpu/pipeline.log 2>&1 &
-```
-
-失败或暂停不会进入后续阶段。重复同一命令，会跳过已完成阶段，恢复当前阶段的权重、优化器、scheduler、随机状态及数据位置。已完成阶段的架构、batch、累积、目标 step 或保存、验证周期不同会被拒绝，不能把旧 500-step A1 当成新 1,000-step A1。
-
-保存和验证按 step 执行；捕获停止信号后在更新边界保存。目标 batch 不会自动缩小，尤其 B 的每卡 batch 8 需要在目标 GPU 验证显存。SwanLab 默认离线，添加 `--swanlab-mode cloud` 可在线记录。验证为 25 步、CFG 5、shift 6。
-
-### 双节点，各 4 卡
-
-两节点需共享相同路径的权重、数据和输出，并设置相同资源环境变量。将 `node0` 替换为节点 0 的可达地址；两边各执行一次，不要额外套 torchrun。
-
-```bash
-conda activate linear-pid
-# 节点 0
-NNODES=2 NODE_RANK=0 MASTER_ADDR=node0 MASTER_PORT=29583 \
-GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-python -m pid._src.vdn_pid.pipeline --workers 2 \
-  --output-root ../experiment/pid-vdn-fixed4-8gpu
-
-# 节点 1：在另一台节点执行
-NNODES=2 NODE_RANK=1 MASTER_ADDR=node0 MASTER_PORT=29583 \
-GPU_IDS=0,1,2,3 CPU_THREADS=1 \
-python -m pid._src.vdn_pid.pipeline --workers 2 \
-  --output-root ../experiment/pid-vdn-fixed4-8gpu
-```
-
-导入的 50K 索引重新编号了行号，上述步骤用于按新配置开始完整实验。若搬本流程已有断点，同时搬输出目录和已导入索引；原百万行索引创建的旧断点不能直接配重编号索引。
-
-## 4. 推理与评估
-
-checkpoint 记录 `fixed4` 结构，推理自动重建。固定条件推理需要原始 PiD 权重和验证条件，不加载教师模型、Gemma 或 Z-Image-Turbo。
-
-```bash
-conda activate linear-pid
-GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/sample_pid_vdn.sh \
-  --checkpoint ../experiment/pid-vdn-fixed4-8gpu/b/checkpoints/SELECTED_CHECKPOINT \
-  --weights-root "$PID_WEIGHTS_ROOT" --index-root "$PID_INDEX_ROOT" \
-  --gallery-root "$PID_GALLERY_ROOT" --suite qualitative --include-4k \
-  --output-dir ../experiment/pid-vdn-fixed4-8gpu/inference
-```
-
-输出原尺寸图像、局部裁剪、caption、seed、参数和耗时。多卡按图像分工，重复命令跳过已完成图像。增量 checkpoint 必须配合同一原始 PiD 基础权重。数据、模型、缓存、输出与本地测试均不上传 Git。
+集成后的 prepare/cache/sample CLI、真实资源配置和四卡数值验收仍依赖各 writer 交付，文档中的支持矩阵不代表运行通过。H800 八卡 4K、每卡 batch 4 的峰值显存与多步训练单列未验证。功能验收不替代长程收敛和画质评估。
