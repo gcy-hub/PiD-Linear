@@ -1,0 +1,5 @@
+model:
+  family: pid
+  layer_counts: {patch: 14}
+replacement:
+  layers: {patch: all}

@@ -1,0 +1,5 @@
+model:
+  family: flux2
+  layer_counts: {double: 8, single: 48}
+replacement:
+  layers: {double: all, single: all}

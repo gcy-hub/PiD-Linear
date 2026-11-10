@@ -1,0 +1,3 @@
+data:
+  buckets: official
+cache: {image: false, text: false}

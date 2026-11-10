@@ -1,8 +1,12 @@
 const call = (name, model, extra = {}) => ({agent: "worker", model, cwd: args.repo, task: args.briefs[name] + "\nReports: " + args.reports, ...extra});
 const delivery = {type:"object", properties:{commit:{type:"string"}, checks:{type:"string"}}, required:["commit","checks"], additionalProperties:false};
-const contract = await runs.run("C", call("C", "zzz/gpt-6.1-sol:high", {schema:delivery}));
-if (!contract.ok) throw new Error("C contract failed: " + contract.output);
-const base = contract.data.commit;
+let base = args.contract;
+if (base !== undefined && !/^[0-9a-f]{40}$/.test(base)) throw new Error("args.contract must be a full committed SHA");
+if (base === undefined) {
+  const contract = await runs.run("C", call("C", "zzz/gpt-6.1-sol:high", {schema:delivery}));
+  if (!contract.ok) throw new Error("C contract failed: " + contract.output);
+  base = contract.data.commit;
+}
 const names = ["A", "M", "D", "T", "V"];
 const results = await runs.all(names.map(name => ({key:name, ...call(name,
   name === "A" || name === "T" ? "zzz/gpt-6-astra:high" : "zzz/gpt-6.1-sol:high",

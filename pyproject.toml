@@ -134,12 +134,13 @@ torchvision = { index = "pytorch-cu128" }
 [tool.setuptools.packages.find]
 # Include the pid directory and all its subdirectories
 where = ["."]
-include = ["pid*"]
+include = ["pid*", "attention_framework*", "models*", "algorithms*", "data*", "training*", "download*", "configs*"]
 exclude = ["tests*", "docs*", "examples*"]
 
 [tool.setuptools.package-data]
 # Include all Python files and other required files
 pid = ["py.typed", "**/*.py"]
+configs = ["**/*.yaml", "default.yaml"]
 
 # Ruff configuration - all-in-one Python tool (replaces black, isort, flake8, etc.)
 [tool.ruff]

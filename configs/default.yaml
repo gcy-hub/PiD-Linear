@@ -1,0 +1,49 @@
+model:
+  family: flux3
+  architecture: native
+  resources: {weights: null, text_encoder: null, tokenizer: null, vae: null}
+  layer_counts: {early_image: 5, joint: 28}
+replacement:
+  layers: {early_image: all, joint: all}
+  feature_layers: all
+algorithm:
+  name: cross_scan_kda
+  local: {window_size: 11}
+  kda: {expand_v: 1.0}
+  memory: {banks: 4, region_size: 8, halo: 2, chunk_size: 4096}
+  clear: {radius: 16, down_factor: 1, train_grid: 64, proportional_attention: false}
+training:
+  strategy: clear
+  batch_size: 1
+  accumulation: 1
+  steps: 50000
+  seed: 42
+  optimizer: prodigy
+  lr: 1.0
+  weight_decay: 0.01
+  scheduler: constant
+  fp32_updates: true
+  loss: {fm: 1.0, prediction: 0.5, feature: 0.5}
+  vdn:
+    a1: {steps: 200, warmup: 50, objective: relative_attention_mse}
+    a2: {steps: 500, warmup: 50, objective: teacher}
+    b: {steps: 2000, warmup: 200, objective: teacher}
+    lora: {rank: 64, alpha: 64}
+paths: {weights: ./weights, dataset: ./dataset/pid-vdn-80k, output: ../experiment/attention-framework}
+data:
+  manifest: null
+  buckets: official
+  min_size: 256
+  workers: 4
+  caption_dropout: 0.0
+  image_dropout: 0.0
+cache: {image: false, text: false, root: null}
+runtime:
+  gpus: 1
+  dtype: bfloat16
+  gradient_checkpointing: false
+  optimizer_sharding: false
+  activation_cpu_offload: false
+  optimizer_cpu_offload: false
+checkpoint: {every: 2000, resume: null}
+validation: {every: 2000, steps: 28, seed: 42}

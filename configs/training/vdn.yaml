@@ -1,0 +1,5 @@
+training:
+  strategy: vdn
+  optimizer: adamw
+  scheduler: cosine
+  lr: 0.0001

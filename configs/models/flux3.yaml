@@ -1,0 +1,5 @@
+model:
+  family: flux3
+  layer_counts: {early_image: 5, joint: 28}
+replacement:
+  layers: {early_image: all, joint: all}

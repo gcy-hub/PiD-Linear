@@ -1,0 +1,5 @@
+training:
+  strategy: clear
+  optimizer: prodigy
+  scheduler: constant
+  lr: 1.0
