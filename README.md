@@ -1,6 +1,6 @@
 # Attention 实验框架
 
-PiD、FLUX2、FLUX3 共用算法、数据生命周期和训练入口。基础模型配置指定架构、资源和原生采样；替换模型由同一基础配置、attention 配置和层选择组成。原生 `pid/` 与历史实验保留，旧 checkpoint 不迁移。历史命令见 [历史训练](docs/historical-training.md)。
+PiD、FLUX2、FLUX3 共用算法、数据生命周期和训练入口。基础模型配置指定架构、资源和原生采样；替换模型由同一基础配置、attention 配置和层选择组成。原生 `pid/` 与外部历史实验文件保留，旧 checkpoint 不迁移。旧 FLUX 训练器、算法副本、缓存工具和参数脚本已由共享入口替代；读取旧实验请使用对应历史 Git revision。保留的原生入口见 [原生训练](docs/historical-training.md)。
 
 | 目录 | 职责 |
 |---|---|

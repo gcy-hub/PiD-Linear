@@ -13,6 +13,14 @@ for name in deleted.splitlines():
     result = subprocess.run(['git', 'grep', '-n', '-F', name, '--', '*.py', '*.sh'], cwd=ROOT,
                             text=True, capture_output=True)
     assert result.returncode == 1, result.stdout
+# Module invocations use dotted names rather than file paths.
+result = subprocess.run(['git', 'grep', '-n', '-E',
+    r'(from|import|--module| -m) +(flux_kda|flux2[.]flux2_qdm|flux3[.]flux3_qdm|flux2_qdm|flux3_qdm)',
+    '--', '*.py', '*.sh', '*.slurm'], cwd=ROOT, text=True, capture_output=True)
+assert result.returncode == 1, result.stdout
+for directory in ('flux_kda', 'flux2', 'flux3'):
+    tracked = subprocess.check_output(['git', 'ls-files', '--', directory], cwd=ROOT, text=True)
+    assert all(not (ROOT / name).is_file() for name in tracked.splitlines()), tracked
 for module in ('training.run', 'data.prepare', 'training.validate', 'attention_framework.config', 'download.framework'):
     subprocess.run([sys.executable, '-m', module, '--help'], cwd=ROOT, check=True,
                    stdout=subprocess.DEVNULL)

@@ -1,5 +1,7 @@
 # FLUX.3 Sliding-QDM Implementation Plan
 
+Historical experiment record. Its implementation is available at Git revision `cd9ed3a`; current training uses the [shared framework](../../attention-framework.md).
+
 **Goal:** Train five early image and 28 joint-layer Sliding11+fixed4 QDM on native 2K buckets, serial A1 200/A2 400/B 10000 updates, validation every 200 with ten student images, GPUs 1/2/3.
 
 **Architecture:** Preserve original Base, early text/reference blocks and existing three-stage objectives. Add per-query clipped square FlexAttention with jointly normalized text. Carry window identity through training, checkpoint, phase transition and both inference entry points. Preserve source worktree changes in an independent FLUX3-sliding-QDM branch.

@@ -17,4 +17,4 @@
 
 原生 PiD DMD 仍使用 `torchrun ... -m scripts.train --config <Python配置>`；`scripts/train.py` 和多机模板保留。`pid/_src/pixeldit_qdm/synthetic_pipeline.py` 仍调用 `train_adapt.sh` 与 `train_pixeldit_synthetic_cycle.sh`，所以保留对应薄入口及原生合成数据编排。`train_qdm_stages.sh`/`repeat_pid_vdn.py` 的原生调用仍有使用者，不在新框架交付中机械删除。
 
-历史参数脚本、诊断、采样和实验说明见 [历史训练](../docs/historical-training.md)。这些历史实验的 checkpoint 和缓存继续由历史实现读取，不导入新框架。
+保留的原生诊断、采样和实验说明见 [原生训练](../docs/historical-training.md)。旧 FLUX 参数脚本与训练/缓存实现已移除；外部历史 checkpoint 和缓存保留，使用相应历史 Git revision 读取。数值诊断统一运行 `python -m algorithms.checks.cpu`，独立密集参考位于 `algorithms/checks/references.py`。

@@ -23,7 +23,7 @@ pid/_src/
 
 ## Training
 
-All training jobs start from `scripts/train.py`.
+Shared attention training starts from `python -m training.run`; see the [framework lifecycle](attention-framework.md) for models, algorithms, data, cache and checkpoint commands. The native PiD training paths below use `scripts/train.py`.
 
 ### Trainer
 

@@ -1,5 +1,4 @@
 """Bounded CPU checks for shared config and existing numerical references."""
-import ast
 import json
 from pathlib import Path
 import sys
@@ -59,19 +58,15 @@ def main():
                                                            'data*', 'training*', 'configs*'])
     assert all(p in packages for p in ('attention_framework', 'models', 'algorithms', 'data', 'training', 'configs'))
 
-    # Execute the existing scan function without importing its CUDA-only FLA dependency.
-    source = ast.parse((ROOT / 'flux_kda/attention.py').read_text())
-    namespace = {'torch': torch}
-    exec(compile(ast.Module(body=[n for n in source.body if isinstance(n, ast.FunctionDef) and n.name == 'scan'],
-                            type_ignores=[]), 'flux_kda/attention.py', 'exec'), namespace)
-    scan = namespace['scan']
+    from algorithms.cross_scan_kda import scan
     x = torch.arange(6).reshape(1, 6, 1)
     scans = [scan(x, (2, 3), d).flatten().tolist() for d in range(4)]
     assert scans == [[0, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 0], [0, 3, 1, 4, 2, 5], [5, 2, 4, 1, 3, 0]]
     for d in range(4):
         assert torch.equal(scan(scan(x, (2, 3), d), (2, 3), d, inverse=True), x)
-    from flux2.flux2_qdm.memory import joint_memory, pack_regions, unpack_regions
-    from flux2.flux2_qdm.vendor.clear_attention import AttentionLayout as NativeLayout, ClearAttention, clear_mask
+    from algorithms.qdm import joint_memory, pack_regions, unpack_regions
+    from algorithms.local import ClearAttention, clear_mask
+    NativeLayout = AttentionLayout
     q = torch.ones(1, 2, 1, 1, requires_grad=True)
     memory, _ = joint_memory(q, torch.ones_like(q), torch.tensor([2., 4.]).reshape_as(q),
                              torch.ones(1, 2, 1), torch.ones(1, 2, 1))

@@ -1,9 +1,0 @@
-# Local verification programs, generated files and implementation notes.
-/tests/
-/docs/implementation.md
-__pycache__/
-.pytest_cache/
-.ruff_cache/
-/../experiment/
-/weights/
-/cache/

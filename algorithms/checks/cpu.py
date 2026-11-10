@@ -7,9 +7,7 @@ from algorithms import build_attention
 from algorithms.cross_scan_kda import scan
 from algorithms.local import ClearAttention, halo_attention, sample_slices
 from algorithms.qdm import joint_memory, pack_regions, unpack_regions, QuadrantMemory
-from flux2.flux2_qdm.memory import QuadrantMemory as OriginalMemory
-from flux2.flux2_qdm.vendor.clear_attention import ClearAttention as OriginalClear
-from flux2.flux2_qdm.vendor.clear_attention import AttentionLayout as OriginalLayout
+from algorithms.checks.references import DenseClear, dense_quadrant_memory, StockKDAReference
 
 
 def main():
@@ -42,13 +40,14 @@ def main():
     for first in (True, False):
         layout = AttentionLayout(((2,4,2),(2,2,0)), first)
         q,k,v = [torch.randn(2,2,layout.length,4,requires_grad=True) for _ in range(3)]
-        new, old = ClearAttention(2,2), OriginalClear(2,2)
-        a = new(q,k,v,layout)
-        b = old(q,k,v,OriginalLayout(layout.samples, first))
-        torch.testing.assert_close(a,b)
-        ga = torch.autograd.grad(a.square().sum(), (q,k,v,new.spatial_weight))
-        gb = torch.autograd.grad(b.square().sum(), (q,k,v,old.spatial_weight))
-        for aa,bb in zip(ga,gb): torch.testing.assert_close(aa,bb)
+        for shape, down in (('circle', 2), ('square', 1)):
+            new = ClearAttention(2, down, window_shape=shape, kernel_size=3)
+            old = DenseClear(2, down, window_shape=shape, kernel_size=3)
+            a, b = new(q,k,v,layout), old(q,k,v,layout)
+            torch.testing.assert_close(a,b)
+            ga = torch.autograd.grad(a.square().sum(), (q,k,v,*new.parameters()))
+            gb = torch.autograd.grad(b.square().sum(), (q,k,v,*old.parameters()))
+            for aa,bb in zip(ga,gb): torch.testing.assert_close(aa,bb)
         # Halo reference: each image query sees its region plus halo and text.
         layout = AttentionLayout(((3,5,2),(1,2,0)), first)
         q,k,v = [torch.randn(2,layout.length,2,4,requires_grad=True) for _ in range(3)]
@@ -116,14 +115,13 @@ def main():
                 assert torch.isfinite(mixed.pre_o).all() and torch.isfinite(mixed.post_o_residual).all()
             q,k,v = [z.detach().requires_grad_() for z in (q,k,v)]
 
-    new = QuadrantMemory(8,2,chunk_size=2); old = OriginalMemory(8,2)
-    old.load_state_dict(new.state_dict())
+    new = QuadrantMemory(8,2,chunk_size=2)
     x = torch.randn(6,8,requires_grad=True)
     qkv = [torch.randn(6,2,4,requires_grad=True) for _ in range(3)]
-    a,b = new(x,qkv,(2,3)),old(x,qkv,(2,3))
+    a,b = new(x,qkv,(2,3)),dense_quadrant_memory(new,x,qkv,(2,3))
     torch.testing.assert_close(a,b)
     ga = torch.autograd.grad(a.square().sum(), (x,*qkv,*new.parameters()))
-    gb = torch.autograd.grad(b.square().sum(), (x,*qkv,*old.parameters()))
+    gb = torch.autograd.grad(b.square().sum(), (x,*qkv,*new.parameters()))
     for aa,bb in zip(ga,gb): torch.testing.assert_close(aa,bb,atol=2e-5,rtol=2e-5)
     # Stock FLA construction plus an explicit stand-in tests only packed KDA glue.
     from algorithms.cross_scan_kda import CrossScanKDA
@@ -141,6 +139,17 @@ def main():
             assert past_key_values is None and not use_cache
             return (x.cumsum(1),)
     op.kda.layer = OrderedReference()
+    reference = StockKDAReference(128, 2, spec.ordinal)
+    reference.layer = copy.deepcopy(op.kda.layer)
+    probe = torch.randn(2,6,128,requires_grad=True)
+    for direction in range(4):
+        op.kda.direction = reference.direction = direction
+        a, b = op.kda(probe,(2,3)), reference(probe,(2,3))
+        torch.testing.assert_close(a,b)
+        ga = torch.autograd.grad(a.square().sum(), probe)[0]
+        gb = torch.autograd.grad(b.square().sum(), probe)[0]
+        torch.testing.assert_close(ga,gb)
+    op.kda.direction = spec.ordinal % 4
     for first in (True,False):
         layout = AttentionLayout(((2,3,2),(1,2,0)),first)
         hidden = torch.randn(2,layout.length,128,requires_grad=True)

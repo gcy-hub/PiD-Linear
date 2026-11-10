@@ -132,7 +132,7 @@ torchvision = { index = "pytorch-cu128" }
 # Auto-discover all packages
 
 [tool.setuptools.packages.find]
-# Include the pid directory and all its subdirectories
+# Shared framework packages and the unchanged native PiD packages
 where = ["."]
 include = ["pid*", "attention_framework*", "models*", "algorithms*", "data*", "training*", "download*", "configs*"]
 exclude = ["tests*", "docs*", "examples*"]

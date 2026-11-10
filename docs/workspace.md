@@ -6,11 +6,11 @@
 
 每个实验使用独立输出目录保存断点、优化器状态、图片和日志。`../experiment/` 可以是普通目录，也可以是指向外部存储的符号链接。训练与验证运行期间不要切换分支。
 
-## 历史实验入口
+## 训练入口
 
-`train_flux2_node01.sh` 和 `train_flux3_node01.sh` 保留三卡实验配置。它们支持 `PYTHON`、`WEIGHTS`、`DATA` 环境变量（FLUX3 另有 `RESOURCES`），以及第一个位置参数指定输出目录。新机器的通用在线训练使用 `python -m flux_kda.run --config <配置文件>`。
+共享训练使用 `python -m training.run`，图像/文本缓存使用 `python -m data.prepare`。资源、manifest、缓存和输出通过 YAML 与 dotlist 覆盖，完整命令见 [使用流程](attention-framework.md)。原生 PiD / PixelDiT 入口见 [原生实验](historical-training.md)。
 
-80K 缓存工具使用 `FLUX3_DATASET_ROOT` 和 `FLUX3_WEIGHTS_ROOT`。混合比例实验及诊断工具使用 `FLUX3_SUBSET_ROOT`、`FLUX3_WEIGHTS`。如需限定缓存或混合比例实验的执行主机，设置 `FLUX_KDA_HOST`；恢复工具使用 `--host` 指定主机，默认当前主机。这些变量应在运行时设置；历史实验入口仍需要对应的数据、断点和验证条件。
+旧 FLUX 实验的数据、权重、断点和日志保留在外部实验目录，使用相应历史 Git revision 读取。
 
 ## 断点与本机归档
 

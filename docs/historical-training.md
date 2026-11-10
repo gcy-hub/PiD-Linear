@@ -1,33 +1,12 @@
-# FLUX3 Sliding + KDA
+# 原生 PiD / PixelDiT 实验
 
-从仓库根目录运行命令，使用已激活环境中的 Python。模型、数据和实验输出路径通过配置或命令行传入，支持绝对路径。默认输出到 `../experiment/`，不在仓库内建立输出链接。每个实验使用独立子目录保存断点、图片和日志。切换分支前先停止训练与验证。路径约定见 [工作目录](docs/workspace.md)。
+当前共享 attention 框架见 [使用流程](attention-framework.md)。本页记录保留的原生 PiD / PixelDiT 入口。旧 FLUX checkpoint、缓存和日志由对应历史 Git revision 读取；当前框架从新训练开始。
 
-`main` 的默认训练入口是在线读取图片和 caption、编码、CLEAR 微调及独立验证。完整说明见 [FLUX KDA](flux_kda/README.md)，八卡配置见 [H800 4K 配置](flux_kda/configs/h800-8gpu-4k.json)。修改配置中的模型、资源和数据路径后运行：
+本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。PixelDiT 入口默认恢复四象限远程分支图像 Q/K 的二维 RoPE，使用独立的 `../experiment/pixeldit-t2i-qdm-halo2-rope` 目录从原始权重训练。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
 
-```bash
-export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
-OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-  python -m flux_kda.run --config flux_kda/configs/h800-8gpu-4k.json
-```
+可选执行 [原始 PixelDiT 合成数据 A1 对照](pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
 
-配置为每卡 batch 4、累积 1、50000 步，每 2000 步保存最新断点并生成 4K 验证图。数据量自动统计，使用 PiD 官方多分辨率桶，图像及文本不预缓存。显存优化可选，目标 H800 配置的完整训练峰值尚未实测。
-
-训练入口及脚本分类见 [scripts/README.md](scripts/README.md)。
-
-## PixelDiT-T2I / QDM Halo2 等已有实验
-
-QDM Halo2 分支名为 `QDM-Halo2`。下文保留已有实验的入口和说明。
-
-
-FLUX.3 的[8卡四组双卡实验及28层合并联合训练](flux3/docs/parallel-pairs.md)入口也已提供，使用现有50K数据及其20K子集。
-
-FLUX.3 的 Hybrid Attention 迁移与 **14 组独立双层实验**也已包含在本仓库中，见 [FLUX.3 使用说明](flux3/README.md#14-组独立双层实验)。每组仅替换相邻两层，串行执行 A1/A2/B 各 50 步，B 结束后生成 10 张 2K 验证图。
-
-本分支增加原始 PixelDiT-T2I 的 QDM Halo2 三阶段迁移。训练使用原生 1K 多长宽比、noisy pixels 和 Gemma 文本，不使用 PiD 图像 latent 条件。PixelDiT 入口默认恢复四象限远程分支图像 Q/K 的二维 RoPE，使用独立的 `../experiment/pixeldit-t2i-qdm-halo2-rope` 目录从原始权重训练。默认 A1/A2/B 每卡 batch 为 4/8/8，累积 1，支持后台自动续训和独立 prompt 推理。资源准备、完整命令见 [PixelDiT-T2I 实验说明](docs/pixeldit-qdm.md)。下文保留 PiD-QDM Halo2 的原有用法。
-
-可选执行 [原始 PixelDiT 合成数据 A1 对照](docs/pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
-
-原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支；**全量数据 4K 训练也已合入当前 main**。已有 50K 导出包的服务器可以自动补齐数据、构建缓存，再串行运行 A1／A2／B，八卡配置和完整命令见 [PiD-QDM 4K 跨服务器训练](docs/pid-qdm-4k-remote.md)。
+原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支；**全量数据 4K 训练也已合入当前 main**。已有 50K 导出包的服务器可以自动补齐数据、构建缓存，再串行运行 A1／A2／B，八卡配置和完整命令见 [PiD-QDM 4K 跨服务器训练](pid-qdm-4k-remote.md)。
 
 ## Three-stage training
 
@@ -99,7 +78,7 @@ RUN_OUTPUT=../experiment/pid-qdm sbatch --nodes=1 --gpus-per-node=4 \
   --stage all --batch-size 4 --grad-accum 2 --resume auto
 ```
 
-模板使用当前环境，在调度器终止预警时请求保存。多机提交和其他入口见 [训练脚本说明](scripts/README.md)。
+模板使用当前环境，在调度器终止预警时请求保存。多机提交和其他入口见 [训练脚本说明](../scripts/README.md)。
 
 ## Original data/resource setup reference
 
@@ -109,7 +88,7 @@ RUN_OUTPUT=../experiment/pid-qdm sbatch --nodes=1 --gpus-per-node=4 \
 
 将 PiD 的 **14 层 MMDiT Attention** 改为 **局部 Softmax + 固定四象限记忆**，两层 PiT 保持原样。局部 Softmax 是互不重叠的 `8×8 token` 窗口，直接访问文本，保留图像与文本 Q/K 的 RoPE。记忆分支不使用 RoPE：图像 K/V 经 `5×5 DWConv`，四个象限分别联合求解记忆，每个 Q 只读所属象限；取消双向 VDA 的扫描和遗忘衰减，包含自身写入。
 
-这是需要重新恢复训练的研究结构，测速不代表已保持质量。详见 [研究说明](docs/research/spatial-delta-memory.md)。原双向 VDA 入口仍支持 `--memory-mode vda`；本页串行脚本固定使用 `fixed4`。
+这是需要重新恢复训练的研究结构，测速不代表已保持质量。详见 [研究说明](research/spatial-delta-memory.md)。原双向 VDA 入口仍支持 `--memory-mode vda`；本页串行脚本固定使用 `fixed4`。
 
 ## 1. 资源下载
 

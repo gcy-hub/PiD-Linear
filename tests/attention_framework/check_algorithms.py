@@ -55,9 +55,7 @@ def check():
                     if cuda_tensor.grad is not None:
                         torch.testing.assert_close(cuda_tensor.grad.float().cpu(), cpu_tensor.grad.float(), rtol=.08, atol=.01)
             if algorithm == 'cross_scan_kda':
-                from flux_kda.attention import ImageKDA as OriginalKDA
-                from flux2.flux2_qdm.vendor.clear_attention import ClearAttention as OriginalLocal
-                from flux2.flux2_qdm.vendor.clear_attention import AttentionLayout as OriginalLayout
+                from algorithms.checks.references import StockKDAReference as OriginalKDA, DenseClear as OriginalLocal
                 from algorithms.local import sample_slices
                 original = OriginalKDA(128, 2, layer.ordinal).cuda()
                 original.load_state_dict(op.kda.state_dict())
@@ -65,7 +63,7 @@ def check():
                 original_local = OriginalLocal(window_shape='square', kernel_size=3)
                 local = original_local(tensors[4].detach().cpu().transpose(1, 2),
                     tensors[5].detach().cpu().transpose(1, 2), tensors[3].detach().cpu().transpose(1, 2),
-                    OriginalLayout(layout.samples, text_first)).transpose(1, 2).flatten(2).cuda()
+                    layout).transpose(1, 2).flatten(2).cuda()
                 parts = []
                 with torch.autocast('cuda', dtype=torch.bfloat16):
                     for grid, whole, image, text in sample_slices(layout):
