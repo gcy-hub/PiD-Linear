@@ -10,7 +10,8 @@ def native_module(family):
         raise ValueError(f'Unknown DiffSynth family: {family}')
     root = Path(__file__).parent / 'DiffSynth-Studio' / 'diffsynth'
     prefix = '_attention_framework_diffsynth'
-    for suffix, directory in (('', root), ('.models', root / 'models'), ('.core', root / 'core')):
+    for suffix, directory in (('', root), ('.models', root / 'models'), ('.core', root / 'core'),
+                              ('.diffusion', root / 'diffusion')):
         name = prefix + suffix
         if name not in sys.modules:
             package = types.ModuleType(name)
@@ -31,3 +32,9 @@ def import_framework():
     os.environ.setdefault('TRANSFORMERS_OFFLINE', '1')
     os.environ.setdefault('DIFFSYNTH_SKIP_DOWNLOAD', 'True')
     return root
+
+
+def flow_scheduler(family):
+    native_module(family)
+    module = importlib.import_module('_attention_framework_diffsynth.diffusion.flow_match')
+    return module.FlowMatchScheduler('FLUX.2' if family == 'flux2' else 'FLUX.3')

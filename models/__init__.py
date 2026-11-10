@@ -1,5 +1,6 @@
 """Native model loading and attention adaptation without training policy."""
 from .base import NativeModel, load_native
+from .sampling import sample
 
 
 def build_model(config, *, device, algorithm_factory):
