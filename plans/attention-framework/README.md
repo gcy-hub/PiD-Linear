@@ -1,0 +1,15 @@
+# Attention framework execution
+
+Approved source: [模型与 Attention 实验框架重构计划](../attention-framework-refactor.md), approved 2026-11-11 00:19 CST. The coordinator owns checklist progress.
+
+`implementation.js` arranges C contract → parallel A/M/D/T/V → main integration → read-only CPU verification. Tasks in `tasks/` carry ownership and acceptance requirements. A/T use `zzz/gpt-6-astra:high`; all other calls use `zzz/gpt-6.1-sol:high`. Each parallel writer uses `isolation: "worktree"` after C commits; main remains at the contract commit until every parallel writer finishes. Writers verify the required base before editing. Only C/integration writes main.
+
+`acceptance.js` first waits in a durable command for the existing implementation workflow to succeed, then delegates acceptance/delivery to sol. Its brief preserves the approved GPU order, support matrix, cache/recovery checks and push gate. GPU execution itself must use a durable command holding `machine`. A mandatory blocked/failed result prevents push; H800 acceptance remains separate.
+
+Machine configuration, exact submitted JSON specs, task ID/time, original crontab and driver are local under `../experiment/attention-framework-refactor/local/`. `handoff.json` identifies this project's two fixed durable requests and the agents-cron task. The implementation request is `pid-attention-20261111-implementation`; the acceptance request is `pid-attention-20261111-acceptance`. The coordinator launches implementation once using local `launch-implementation.sh`; scheduling setup does not launch it. No implementation worktrees exist until C's later contract delivery.
+
+The once task and local every-minute/reboot driver share `handoff.py`. Before the due time it only recovers an already submitted implementation request. At/after the due time it submits the same acceptance spec/request, unless cron owns the handoff. Pending/running requests reuse their persisted identity and exact content; terminal success/failure never starts another workflow. Crash recovery wakes the orchestrator through idempotent re-submission of this project's existing specs, without session/origin binding or global resume/restart. An explicit scheduler model/tool rejection stops automatic handoff and stays in the local scheduler report for coordinator action.
+
+Do not edit submitted specs or workflow source while running: durable pins them. Follow-up fixes use new fixed request IDs and the same assigned owner/model; do not relaunch implementation. No external notifications. Logs and runtime state stay outside Git.
+
+Run the bounded project handoff check with `python3 plans/attention-framework/check_handoff.py`. It uses in-memory durable responses and does not invoke scheduler internals, providers, reboot or GPUs.

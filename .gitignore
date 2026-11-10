@@ -53,3 +53,7 @@ swanlog/
 
 # Also ignore an output directory linked into a worktree
 /outputs
+
+# Local scheduler artifacts and durable worktrees
+.agents/cron/
+.dsa/
