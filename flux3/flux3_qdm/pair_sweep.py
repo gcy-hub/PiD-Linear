@@ -80,7 +80,7 @@ def seed_fingerprint(root,pair_root,config):
 
 def spawn_controller(root,fd):
     log=(root/'repeat/controller.log').open('a')
-    env={**os.environ,'PYTHONPATH':str(REPO/'flux3')+os.pathsep+str(REPO/'flux3/DiffSynth-Studio')+os.pathsep+os.getenv('PYTHONPATH','')}
+    env={**os.environ,'PYTHONPATH':str(REPO/'flux3')+os.pathsep+str(REPO/'models/vendor/DiffSynth-Studio')+os.pathsep+os.getenv('PYTHONPATH','')}
     child=subprocess.Popen([sys.executable,'-m','flux3_qdm.pair_sweep','--output-root',str(root),
                             '--worker','--lease-fd',str(fd)],cwd=REPO,env=env,pass_fds=(fd,),
                            start_new_session=True,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT)

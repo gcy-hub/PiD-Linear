@@ -1,4 +1,6 @@
 model:
+  # Local native safetensors file/directory; config.json selects the native variant.
+  architecture: native
   family: flux2
   layer_counts: {double: 8, single: 48}
 replacement:

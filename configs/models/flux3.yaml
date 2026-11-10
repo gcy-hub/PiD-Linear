@@ -1,4 +1,6 @@
 model:
+  # Local native safetensors file/directory, with native image/text token channels.
+  architecture: native
   family: flux3
   layer_counts: {early_image: 5, joint: 28}
 replacement:

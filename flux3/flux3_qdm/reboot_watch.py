@@ -156,7 +156,7 @@ def install(root,args):
     repeat.write_json(directory/'config.json',config)
     (directory/'status.json').unlink(missing_ok=True)
     # Set PYTHONPATH before -m resolves the package in a fresh cron shell.
-    prefix=os.pathsep.join([str(repeat.REPO/'flux3'),str(repeat.REPO/'flux3/DiffSynth-Studio')])
+    prefix=os.pathsep.join([str(repeat.REPO/'flux3'),str(repeat.REPO/'models/vendor/DiffSynth-Studio')])
     command=f'cd {shlex.quote(str(repeat.REPO))} && PYTHONPATH={shlex.quote(prefix)} '+shlex.join(
         [sys.executable,'-m','flux3_qdm.reboot_watch','--check','--output-root',str(root)])
     command+=f' >> {shlex.quote(str(directory/"watch.log"))} 2>&1'

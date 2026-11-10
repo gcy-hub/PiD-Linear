@@ -66,7 +66,7 @@ def validate_checkpoint_identity(checkpoint,base_path,config,state=None):
             write_json(cache_path,dict(signature=signature,sha256=actual))
     if actual!=expected:
         raise ValueError('Checkpoint base fingerprint does not match local base weights')
-    source=Path(__file__).resolve().parents[1]/'DiffSynth-Studio/diffsynth/models/flux3_dit.py'
+    source=Path(__file__).resolve().parents[2]/'models/vendor/DiffSynth-Studio/diffsynth/models/flux3_dit.py'
     native_source=sha256_file(source)
     expected_source=metadata.get('native_source_sha256') or metadata.get('native_source_hash')
     if expected_source and native_source!=expected_source:

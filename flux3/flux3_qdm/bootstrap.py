@@ -17,7 +17,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 def _environment(request=None):
     env = dict(os.environ)
-    env['PYTHONPATH'] = os.pathsep.join([str(REPO/'flux3'), str(REPO/'flux3/DiffSynth-Studio'), env.get('PYTHONPATH','')])
+    env['PYTHONPATH'] = os.pathsep.join([str(REPO/'flux3'), str(REPO/'models/vendor/DiffSynth-Studio'), env.get('PYTHONPATH','')])
     env['DIFFSYNTH_SKIP_DOWNLOAD'] = 'True'
     env['TOKENIZERS_PARALLELISM'] = 'false'
     if request:

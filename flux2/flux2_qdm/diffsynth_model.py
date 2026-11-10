@@ -47,7 +47,7 @@ class AttentionProjection(nn.Module):
 
 
 def import_framework(root=None):
-    root=Path(root or os.getenv('FLUX2_DIFFSYNTH_ROOT',Path(__file__).resolve().parents[2]/'flux3/DiffSynth-Studio')).resolve()
+    root=Path(root or os.getenv('FLUX2_DIFFSYNTH_ROOT',Path(__file__).resolve().parents[2]/'models/vendor/DiffSynth-Studio')).resolve()
     if not (root/'diffsynth/models/flux2_dit.py').is_file():raise FileNotFoundError(f'DiffSynth FLUX.2 source not found: {root}')
     sys.path.insert(0,str(root));os.environ['DIFFSYNTH_ATTENTION_IMPLEMENTATION']='torch'
     os.environ.setdefault('HF_HUB_OFFLINE','1');os.environ.setdefault('TRANSFORMERS_OFFLINE','1')

@@ -12,7 +12,7 @@ import time
 GPUS=(1,2,3)
 os.environ['CUDA_VISIBLE_DEVICES']=','.join(map(str,GPUS))
 REPO=Path(__file__).resolve().parents[1]
-sys.path.insert(0,str(REPO/'flux3/DiffSynth-Studio'))
+sys.path.insert(0,str(REPO/'models/vendor/DiffSynth-Studio'))
 DATA=Path(os.environ.get('FLUX3_DATASET_ROOT', 'dataset/MultiAspect-4K-1M')).resolve()
 ROOT=DATA/'flux3_qdm_cache_80k_1k'
 BUCKETS={'1,1':(1024,1024),'4,3':(1152,864),'3,4':(864,1152),'16,9':(1344,768),'9,16':(768,1344),'3,2':(1248,832),'2,3':(832,1248)}

@@ -86,7 +86,7 @@ def ensure_groups(root,config,groups,explicit_resume=False):
 
 def spawn(root,fd):
     log=(root/'repeat/controller.log').open('a')
-    env={**os.environ,'PYTHONPATH':str(repeat.REPO/'flux3')+os.pathsep+str(repeat.REPO/'flux3/DiffSynth-Studio')+os.pathsep+os.getenv('PYTHONPATH','')}
+    env={**os.environ,'PYTHONPATH':str(repeat.REPO/'flux3')+os.pathsep+str(repeat.REPO/'models/vendor/DiffSynth-Studio')+os.pathsep+os.getenv('PYTHONPATH','')}
     child=subprocess.Popen([sys.executable,'-m','flux3_qdm.parallel_pipeline','--output-root',str(root),
                             '--worker','--lease-fd',str(fd)],cwd=repeat.REPO,env=env,pass_fds=(fd,),
                            start_new_session=True,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT)

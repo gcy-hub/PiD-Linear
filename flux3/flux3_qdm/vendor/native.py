@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def native_module():
-    root = Path(__file__).resolve().parents[2] / "DiffSynth-Studio" / "diffsynth"
+    root = Path(__file__).resolve().parents[3] / "models" / "vendor" / "DiffSynth-Studio" / "diffsynth"
     prefix = "_flux3_qdm_native"
     for suffix, directory in (("", root), (".models", root / "models"), (".core", root / "core")):
         name = prefix + suffix
