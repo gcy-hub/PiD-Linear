@@ -11,7 +11,7 @@ from flux3_qdm import data as d
 from flux3_qdm.runtime import GlobalSampler
 
 REPO=Path(__file__).resolve().parents[1]
-DATA=Path('/home/ganchangyi/dataset/MultiAspect-4K-1M')
+DATA=Path(os.environ.get('FLUX3_DATASET_ROOT', 'dataset/MultiAspect-4K-1M')).resolve()
 CACHE=DATA/'flux3_qdm_cache_80k_1k'
 ROOT=REPO/'outputs/flux3-80k-training-smoke'
 SOURCE=REPO/'outputs/flux3-stock-kda-clear-node01-bs1/latest.pt'
@@ -74,7 +74,7 @@ def main():
     print(json.dumps(dict(start=start,end=end,schedule=schedule)),flush=True)
     output=ROOT/'training'
     common=[sys.executable,'-u','-m','torch.distributed.run','--standalone','--nproc_per_node=3','-m','flux_kda.train',
-            '--family','flux3','--data-mode','cached','--shard-optimizer','--gradient-checkpointing','--weights','/home/ganchangyi/huggingface_ckpts/flux-3-image-klein-base/model.safetensors',
+            '--family','flux3','--data-mode','cached','--shard-optimizer','--gradient-checkpointing','--weights',os.environ.get('FLUX3_WEIGHTS', 'weights/flux-3-image-klein-base/model.safetensors'),
             '--subset-root',str(subset),'--cache-root',str(testcache),'--subset-size','21','--image-resolution','1024',
             '--output',str(output),'--batch-size','1','--grad-accum','1','--save-every','100000']
     env=dict(os.environ,CUDA_VISIBLE_DEVICES='1,2,3',PYTHONPATH='.:flux2:flux3',OMP_NUM_THREADS='4',

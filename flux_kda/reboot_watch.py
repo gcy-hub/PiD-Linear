@@ -69,7 +69,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--family', choices=('flux2', 'flux3'), default='flux2')
-    parser.add_argument('--host', default='node01')
+    parser.add_argument('--host', default=socket.gethostname().split('.')[0])
     args = parser.parse_args()
     if socket.gethostname().split('.')[0] != args.host:
         return

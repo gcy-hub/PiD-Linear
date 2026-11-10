@@ -5,16 +5,17 @@ export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
 export OMP_NUM_THREADS=4
 export FLA_DISABLE_TENSOR_CACHE=1
 export PYTORCH_ALLOC_CONF=expandable_segments:True
-PYTHON=/home/ganchangyi/software/miniconda3/envs/flux3-qdm/bin/python
-OUTPUT="${1:-/home/ganchangyi/code/experiment/flux3-stock-kda-clear-node01-bs1}"
-WEIGHTS=/home/ganchangyi/huggingface_ckpts/flux-3-image-klein-base/model.safetensors
-DATA=/home/ganchangyi/dataset/CLEAR-FLUX3-klein-base-2K-2048_20261106-1102/CLEAR-FLUX3-klein-base-2K-2048
+PYTHON="${PYTHON:-python}"
+OUTPUT="${1:-outputs/flux3-stock-kda-clear-node01-bs1}"
+WEIGHTS="${WEIGHTS:-weights/flux-3-image-klein-base/model.safetensors}"
+DATA="${DATA:-dataset/CLEAR-FLUX3-klein-base-2K-2048_20261106-1102/CLEAR-FLUX3-klein-base-2K-2048}"
+RESOURCES="${RESOURCES:-weights}"
 mkdir -p "$OUTPUT"
 exec 9>"$OUTPUT/launcher.lock"
 flock -n 9 || exit 0
 rm -f "$OUTPUT/exit-code"
 trap 'printf "%s\n" "$?" > "$OUTPUT/exit-code"' EXIT
-"$PYTHON" -m flux_kda.cache_flux3 --data "$DATA"
+"$PYTHON" -m flux_kda.cache_flux3 --data "$DATA" --resources "$RESOURCES"
 resume=()
 completed=0
 if [[ -e "$OUTPUT/latest.pt" ]]; then
@@ -36,8 +37,10 @@ for boundary in 1 2 $(seq 200 200 10000); do
     validation="$OUTPUT/validation/step-$boundary"
     if [[ -f "$validation/kda.json" ]]; then continue; fi
     mkdir -p "$validation"
-    cp outputs/stock-kda-speed/flux3-2k/conditions.pt "$validation/conditions.pt"
+    if [[ -f outputs/stock-kda-speed/flux3-2k/conditions.pt ]]; then
+        cp outputs/stock-kda-speed/flux3-2k/conditions.pt "$validation/conditions.pt"
+    fi
     CUDA_VISIBLE_DEVICES=1 "$PYTHON" -m flux_kda.benchmark --family flux3 \
-        --weights "$WEIGHTS" --checkpoint "$OUTPUT/latest.pt" --variant kda \
+        --weights "$WEIGHTS" --resources "$RESOURCES" --checkpoint "$OUTPUT/latest.pt" --variant kda \
         --size 1024 --steps 20 --cfg 3.5 --seed 0 --output "$validation"
 done

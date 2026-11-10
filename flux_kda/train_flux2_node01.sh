@@ -3,10 +3,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
 export OMP_NUM_THREADS=4
-PYTHON=/home/ganchangyi/software/miniconda3/envs/flux3-qdm/bin/python
-OUTPUT="${1:-/home/ganchangyi/code/experiment/flux2-stock-kda-clear-node01-bs2}"
-WEIGHTS=/home/ganchangyi/huggingface_ckpts/FLUX.2-klein-base-4B
-DATA=/home/ganchangyi/dataset/CLEAR-FLUX2-klein-base-4B-10K
+PYTHON="${PYTHON:-python}"
+OUTPUT="${1:-outputs/flux2-stock-kda-clear-node01-bs2}"
+WEIGHTS="${WEIGHTS:-weights/FLUX.2-klein-base-4B}"
+DATA="${DATA:-dataset/CLEAR-FLUX2-klein-base-4B-10K}"
 mkdir -p "$OUTPUT"
 exec 9>"$OUTPUT/launcher.lock"
 flock -n 9 || exit 0
@@ -33,7 +33,9 @@ for boundary in 1 2 300 600 900 1000; do
     validation="$OUTPUT/validation/step-$boundary"
     if [[ -f "$validation/kda.json" ]]; then continue; fi
     mkdir -p "$validation"
-    cp outputs/stock-kda-speed/flux2-2k/conditions.pt "$validation/conditions.pt"
+    if [[ -f outputs/stock-kda-speed/flux2-2k/conditions.pt ]]; then
+        cp outputs/stock-kda-speed/flux2-2k/conditions.pt "$validation/conditions.pt"
+    fi
     CUDA_VISIBLE_DEVICES=1 "$PYTHON" -m flux_kda.benchmark --family flux2 \
         --weights "$WEIGHTS" --checkpoint "$OUTPUT/latest.pt" --variant kda \
         --size 1024 --steps 20 --cfg 3.5 --seed 0 --output "$validation"

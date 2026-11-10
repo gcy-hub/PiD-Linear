@@ -167,9 +167,9 @@ def check_once(root, config):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset-root", default="/home/ganchangyi/dataset/MultiAspect-4K-1M")
+    parser.add_argument("--dataset-root", default="dataset/MultiAspect-4K-1M")
     parser.add_argument("--output-root", default=None)
-    parser.add_argument("--weights-root", default="/home/ganchangyi/huggingface_ckpts")
+    parser.add_argument("--weights-root", default="weights")
     parser.add_argument("--gpu-ids", default=os.environ.get("GPU_IDS", "0,1,2,3"))
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--workers", type=int, default=2)

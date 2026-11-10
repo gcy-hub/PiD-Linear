@@ -43,7 +43,7 @@ else:
 ''')
         fake.chmod(0o755)
         script = watch.LAUNCHER.read_text().replace('cd "$(dirname "$0")/.."', f'cd "{watch.REPO}"')
-        script = script.replace('PYTHON=/home/ganchangyi/software/miniconda3/envs/flux3-qdm/bin/python', f'PYTHON="{fake}"')
+        script = script.replace('PYTHON="${PYTHON:-python}"', f'PYTHON="{fake}"')
         runner = root / 'run.sh'
         runner.write_text(script)
         (root / 'latest.pt').touch()
@@ -60,7 +60,7 @@ else:
         fake.write_text(fake.read_text().replace('print(300)', 'print(1000)'))
         (root / 'calls').unlink()
         script = flux3_launcher.read_text().replace('cd "$(dirname "$0")/.."', f'cd "{watch.REPO}"')
-        script = script.replace('PYTHON=/home/ganchangyi/software/miniconda3/envs/flux3-qdm/bin/python', f'PYTHON="{fake}"')
+        script = script.replace('PYTHON="${PYTHON:-python}"', f'PYTHON="{fake}"')
         runner.write_text(script)
         subprocess.run(['bash', str(runner), str(root)], check=True)
         calls = [json.loads(line) for line in (root / 'calls').read_text().splitlines()]

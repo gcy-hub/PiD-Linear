@@ -9,7 +9,7 @@ import numpy as np
 import torch
 
 try:
-    # DOVER imports (requires PYTHONPATH to include /root/henry/DOVER)
+    # Install the official DOVER package or add its checkout to PYTHONPATH.
     from dover.datasets import UnifiedFrameSampler, spatial_temporal_view_decomposition
     from dover.models import DOVER as DOVERModel
 except ImportError:
@@ -46,7 +46,7 @@ class DOVER(BaseMetric):
         import yaml
 
         if config_path is None:
-            config_path = "/root/henry/LinearVSR/evaluations/configs/dover.yml"
+            raise ValueError("DOVER requires an explicit config_path")
 
         with open(config_path, "r") as f:
             self.opt = yaml.safe_load(f)

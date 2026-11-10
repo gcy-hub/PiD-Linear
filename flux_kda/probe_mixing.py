@@ -1,5 +1,6 @@
 """Measure global/local text mass and KDA scale on fixed FLUX3 inputs."""
 import argparse
+import os
 from contextlib import nullcontext
 import json
 from pathlib import Path
@@ -37,9 +38,9 @@ def main():
     args=p.parse_args()
     torch.set_num_threads(4)
     root=Path(args.output);root.mkdir(parents=True,exist_ok=True)
-    source=Path('/home/ganchangyi/dataset/CLEAR-FLUX3-klein-base-2K-2048_20261106-1102/CLEAR-FLUX3-klein-base-2K-2048')
+    source=Path(os.environ.get('FLUX3_SUBSET_ROOT', 'dataset/CLEAR-FLUX3-klein-base-2K-2048'))
     data=ClearFlux3Dataset(source,source/'cache-flux3-1024',2000)
-    model=build_model('flux3','/home/ganchangyi/huggingface_ckpts/flux-3-image-klein-base/model.safetensors','cuda')
+    model=build_model('flux3',os.environ.get('FLUX3_WEIGHTS', 'weights/flux-3-image-klein-base/model.safetensors'),'cuda')
     state=torch.load(args.checkpoint,map_location='cpu',mmap=True,weights_only=False)
     load_delta(model,state['delta']);step=state['step'];del state
     for module in model.modules():

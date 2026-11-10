@@ -12,7 +12,7 @@ KDA 使用安装版本的标准层及其默认设置：独立 Q/K/V 投影、Q/K
 
 ```bash
 export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
-PYTHON=/home/ganchangyi/software/miniconda3/envs/flux3-qdm/bin/python
+PYTHON="${PYTHON:-python}"
 CUDA_VISIBLE_DEVICES=0 "$PYTHON" -m flux_kda.check --cuda
 ```
 

@@ -17,8 +17,8 @@ SOURCE=REPO/'outputs/flux3-stock-kda-clear-node01-bs1'
 PYTHON=sys.executable
 ENV=dict(os.environ,PYTHONPATH=f'{REPO}:{REPO}/flux2:{REPO}/flux3',OMP_NUM_THREADS='4',
          FLA_DISABLE_TENSOR_CACHE='1',PYTORCH_ALLOC_CONF='expandable_segments:True')
-DATA='/home/ganchangyi/dataset/CLEAR-FLUX3-klein-base-2K-2048_20261106-1102/CLEAR-FLUX3-klein-base-2K-2048'
-WEIGHTS='/home/ganchangyi/huggingface_ckpts/flux-3-image-klein-base/model.safetensors'
+DATA=os.environ.get('FLUX3_SUBSET_ROOT', 'dataset/CLEAR-FLUX3-klein-base-2K-2048')
+WEIGHTS=os.environ.get('FLUX3_WEIGHTS', 'weights/flux-3-image-klein-base/model.safetensors')
 
 
 def step(path):
@@ -94,7 +94,8 @@ def main():
     parser.add_argument('--run-fd',type=int)
     args=parser.parse_args()
     if args.prepare:prepare();return
-    if socket.gethostname().split('.')[0]!='node01':return
+    host = os.environ.get('FLUX_KDA_HOST')
+    if host and socket.gethostname().split('.')[0] != host:return
     if args.run_fd is not None:
         try:run(args.run_fd)
         except Exception as exc:

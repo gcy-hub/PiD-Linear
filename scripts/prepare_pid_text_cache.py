@@ -188,9 +188,9 @@ def run(args, rank, world, device, stopped):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dataset-root", default="/home/ganchangyi/dataset/MultiAspect-4K-1M")
+    parser.add_argument("--dataset-root", default="dataset/MultiAspect-4K-1M")
     parser.add_argument("--output-root", default=None)
-    parser.add_argument("--weights-root", default="/home/ganchangyi/huggingface_ckpts")
+    parser.add_argument("--weights-root", default="weights")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--workers", type=int, default=2, help="Bounded metadata prefetch threads per GPU")
     parser.add_argument("--threads", type=int, default=1)

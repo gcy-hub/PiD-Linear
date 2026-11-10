@@ -13,7 +13,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data', type=Path, required=True)
     parser.add_argument('--rank', type=int)
+    parser.add_argument('--resources', default='weights')
     args = parser.parse_args()
+    args.data = args.data.resolve()
     root = args.data / 'cache-flux3-1024'
     source = args.data / 'cache-flux3'
     with (args.data / 'metadata.csv').open() as stream:
@@ -31,7 +33,7 @@ def main():
         manifest['fingerprint'] = dict(source=manifest['fingerprint'], resolution=1024)
         manifest['spec']['resolution'] = 1024
         (root / 'latent-manifest.json').write_text(json.dumps(manifest))
-        children = [subprocess.Popen([sys.executable, '-m', 'flux_kda.cache_flux3', '--data', str(args.data), '--rank', str(rank)],
+        children = [subprocess.Popen([sys.executable, '-m', 'flux_kda.cache_flux3', '--data', str(args.data), '--rank', str(rank), '--resources', args.resources],
                     env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(rank+1))) for rank in range(3)]
         codes = [child.wait() for child in children]
         if any(codes):
@@ -55,7 +57,7 @@ def main():
     from flux3_qdm.resources import resource_paths
     torch.set_num_threads(4)
     pipe = Flux3ImagePipeline.from_pretrained(device='cuda', torch_dtype=torch.bfloat16,
-        model_configs=[ModelConfig(path=resource_paths()['vae'])], processor_config=None)
+        model_configs=[ModelConfig(path=resource_paths(args.resources)['vae'])], processor_config=None)
     with torch.inference_mode():
         for index in range(args.rank, len(rows), 3):
             row = rows[index]

@@ -13,7 +13,7 @@ GPUS=(1,2,3)
 os.environ['CUDA_VISIBLE_DEVICES']=','.join(map(str,GPUS))
 REPO=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(REPO/'flux3/DiffSynth-Studio'))
-DATA=Path('/home/ganchangyi/dataset/MultiAspect-4K-1M')
+DATA=Path(os.environ.get('FLUX3_DATASET_ROOT', 'dataset/MultiAspect-4K-1M')).resolve()
 ROOT=DATA/'flux3_qdm_cache_80k_1k'
 BUCKETS={'1,1':(1024,1024),'4,3':(1152,864),'3,4':(864,1152),'16,9':(1344,768),'9,16':(768,1344),'3,2':(1248,832),'2,3':(832,1248)}
 
@@ -23,7 +23,7 @@ def setup():
     from flux3_qdm.prepare import component_fingerprints
     from flux3_qdm.resources import resource_manifest
     d.IMAGE_PREPROCESS['buckets']=BUCKETS
-    resources=resource_manifest(Path.home()/'huggingface_ckpts')
+    resources=resource_manifest(Path(os.environ.get('FLUX3_WEIGHTS_ROOT', 'weights')))
     store=d.CacheStore(ROOT,component_fingerprints(resources))
     rows=d.load_records(DATA/'pid_vdn_subsets',80000)
     return d,store,rows,resources
@@ -37,7 +37,7 @@ def worker(rank,phase,smoke=False):
     torch.set_num_threads(4);torch.cuda.set_device(rank)
     device=f'cuda:{rank}'
     d,store,rows,_=setup()
-    pipe=_load_phase(phase,Path.home()/'huggingface_ckpts',device)
+    pipe=_load_phase(phase,Path(os.environ.get('FLUX3_WEIGHTS_ROOT', 'weights')),device)
     done=0;tested=False
     def save_text(keys,inputs,length):
         nonlocal done,tested
@@ -122,7 +122,8 @@ def main():
     ROOT.mkdir(exist_ok=True)
     if args.worker is not None:worker(args.worker,args.phase,args.smoke);return
     import socket
-    if socket.gethostname().split('.')[0]!='node01':return
+    host = os.environ.get('FLUX_KDA_HOST')
+    if host and socket.gethostname().split('.')[0] != host:return
     if any((ROOT/x).exists() for x in ['COMPLETE','STOP','FAILED']):return
     with (ROOT/'run.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -131,7 +132,7 @@ def main():
         if any(int(free.splitlines()[gpu])<40960 for gpu in GPUS):return
         if not (ROOT/'text').exists():(ROOT/'text').symlink_to(DATA/'flux3_qdm_cache/text',target_is_directory=True)
         d,store,rows,resources=setup()
-        store.initialize_subset(DATA/'pid_vdn_subsets',80000,rows,resources=dict(weights_root=str((Path.home()/'huggingface_ckpts').resolve()),fingerprints=resources['fingerprints'],revision=resources['revision']))
+        store.initialize_subset(DATA/'pid_vdn_subsets',80000,rows,resources=dict(weights_root=str((Path(os.environ.get('FLUX3_WEIGHTS_ROOT', 'weights'))).resolve()),fingerprints=resources['fingerprints'],revision=resources['revision']))
         for phase in ['image','text']:
             children=[]
             for rank,gpu in enumerate(GPUS):
