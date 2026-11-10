@@ -1,6 +1,6 @@
-# FLUX2 / FLUX3：Sliding11 + 标准 FLA KDA
+# FLUX2 / FLUX3：Sliding + 标准 FLA KDA
 
-每个图像 attention 层保留 Sliding11，并加入完整的 FLA `KimiDeltaAttention` 分支。FLUX2 覆盖 5 个双流层和 20 个单流层；FLUX3 覆盖 5 个早期图像层和 28 个联合层。两路输出在 DiT 的 O 投影前相加，文本保留全局 attention。该混合接入是本仓库的模型适配，不是 FLA 提供的 FLUX 模型。
+每个图像 attention 层保留 Sliding，并加入完整的 FLA `KimiDeltaAttention` 分支。滑动窗口大小由配置项 `kernel` 或训练参数 `--kernel` 控制，默认值为 11，支持其他正奇数。FLUX2 覆盖 5 个双流层和 20 个单流层；FLUX3 覆盖 5 个早期图像层和 28 个联合层。两路输出在 DiT 的 O 投影前相加，文本保留全局 attention。该混合接入是本仓库的模型适配，不是 FLA 提供的 FLUX 模型。
 
 KDA 使用安装版本的标准层及其默认设置：独立 Q/K/V 投影、Q/K/V 的核大小 4 的一维因果短卷积、低秩衰减与输出门控投影、融合 RMSNorm/sigmoid 门控、输出投影。使用标准初始化，每次 forward 不传缓存、不保留状态。
 
@@ -75,7 +75,7 @@ node01 的三卡训练入口为 `bash flux_kda/train_flux2_node01.sh`：GPU 1/2/
 
 `flux_kda/reboot_watch.py` 通过 node01 用户 crontab 每分钟及开机时执行短检查。训练或验证仍在运行时不会重复启动；进程被清理后，等待 GPU 1/2/3 空闲并调用启动脚本，从最新完整 checkpoint 恢复。若 checkpoint 已到验证步数而验证尚未完成，会先补齐该次验证。`watch-status.json` 记录状态，`watch.log` 记录检查异常。创建输出目录下的 `STOP` 文件可禁止自动重启，已有进程不受影响；明确的程序错误会暂停自动重启，完成目标步数的验证后不再启动（FLUX2 为 1000 步，FLUX3 为 10000 步）。
 
-node01 的 FLUX3 入口为 `bash flux_kda/train_flux3_node01.sh`：GPU 1/2/3、每卡 batch 1、累积 1，使用 2000 张图片的 1024×1024 缓存，目标 10000 步。每 25 步保存 checkpoint，每 200 步暂停训练并生成一张验证图，随后断点恢复；验证参数为 1024×1024、20 步、CFG 3.5、seed 0。使用无偏置的 Sliding11 + KDA，BF16 计算和分片 FP32 主权重、优化器状态。
+node01 的 FLUX3 入口为 `bash flux_kda/train_flux3_node01.sh`：GPU 1/2/3、每卡 batch 1、累积 1，使用 2000 张图片的 1024×1024 缓存，目标 10000 步。每 25 步保存 checkpoint，每 200 步暂停训练并生成一张验证图，随后断点恢复；验证参数为 1024×1024、20 步、CFG 3.5、seed 0。使用无偏置的 Sliding + KDA，BF16 计算和分片 FP32 主权重、优化器状态。
 
 ## 生成与计时
 

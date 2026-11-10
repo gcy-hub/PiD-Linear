@@ -10,10 +10,10 @@ import torch
 import torch.distributed as dist
 from tqdm import tqdm
 
-from pid._src.linear_pid.data import atomic_json, sha256_file
-from pid._src.linear_pid.evaluation import tensor_image
-from pid._src.linear_pid.text_cache import TextCacheReader
-from pid._src.linear_pid.training import init_distributed
+from pid._src.common.data import atomic_json, sha256_file
+from pid._src.common.evaluation import tensor_image
+from pid._src.common.text_cache import TextCacheReader
+from pid._src.common.training import init_distributed
 from .conditioning import load_null_cache
 from .runtime import load_net, sample
 from .synthetic_data import generated_complete, publish_dataset, read_records, save_generated

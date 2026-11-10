@@ -7,13 +7,13 @@ import time
 import torch
 from PIL import Image
 from tqdm import tqdm
-from pid._src.linear_pid.data import atomic_json
-from pid._src.linear_pid.evaluation import asset_cases,save_views,tensor_image
+from pid._src.common.data import atomic_json
+from pid._src.common.evaluation import asset_cases,save_views,tensor_image
 from pid._src.vdn_pid.attention import execution_mode
 from pid._src.vdn_pid.checkpoint import delta_state,load_state,load_delta,verify_base
 from pid._src.vdn_pid.config import VDNConfig,local_layout
 from pid._src.vdn_pid.training import build_student
-from pid._src.linear_pid.training import init_distributed
+from pid._src.common.training import init_distributed
 from .runtime import sample
 
 
@@ -34,7 +34,7 @@ def render_gallery(net,config,output,rank=0,world=1,tracker=None,step=0,suite='q
             null_conditions=(special['null_embs'].to(device),special['null_mask'].to(device))
         else:
             from .conditioning import PixelDiTTextEncoder
-            from pid._src.linear_pid.text_encoder import NEGATIVE_PROMPT
+            from pid._src.common.text_encoder import NEGATIVE_PROMPT
             encoder=PixelDiTTextEncoder(config.weights_root,device)
             null_conditions=encoder.encode_raw([NEGATIVE_PROMPT])
             del encoder

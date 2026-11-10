@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download the model files used by Linear-PiD training and inference."""
+"""Download the model files used by PiD training and inference."""
 
 import argparse
 from pathlib import Path
@@ -7,7 +7,7 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 
-# Keep the directory names in sync with linear_pid/runtime.py.
+# Keep the directory names in sync with common/runtime.py.
 # Revisions pin the official repositories rather than a moving main branch.
 MODEL_DOWNLOADS = {
     "pid": {

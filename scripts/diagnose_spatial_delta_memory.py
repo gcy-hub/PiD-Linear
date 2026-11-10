@@ -16,8 +16,8 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from pid._src.linear_pid.data import RawImageDataset, atomic_json, sha256_file
-from pid._src.linear_pid.runtime import Conditioning
+from pid._src.common.data import RawImageDataset, atomic_json, sha256_file
+from pid._src.common.runtime import Conditioning
 from pid._src.vdn_pid.attention import execution_mode
 from pid._src.vdn_pid.checkpoint import load_delta, load_state, verify_base
 from pid._src.vdn_pid.config import VDNConfig

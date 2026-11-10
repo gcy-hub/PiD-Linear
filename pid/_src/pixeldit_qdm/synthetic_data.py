@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from pid._src.linear_pid.data import BUCKETS, GlobalBatchSampler, RawImageDataset, atomic_json, sha256_file
+from pid._src.common.data import BUCKETS, GlobalBatchSampler, RawImageDataset, atomic_json, sha256_file
 
 
 def image_seed(seed, uid):

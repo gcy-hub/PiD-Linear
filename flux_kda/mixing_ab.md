@@ -1,12 +1,14 @@
 # FLUX3 image/text mixing ablation
 
-Starting checkpoint: step 600, BF16 computation with FP32 master parameters and optimizer state. The two arms resume identical model, optimizer and scheduler states and use steps 601–700 of the same deterministic sampler. Each update consumes three samples: GPUs 1/2/3, batch 1, accumulation 1. Both arms retain the CLEAR loss, Sliding11 and stock FLA KDA.
+本实验的滑动窗口大小为 11×11 tokens。
+
+Starting checkpoint: step 600, BF16 computation with FP32 master parameters and optimizer state. The two arms resume identical model, optimizer and scheduler states and use steps 601–700 of the same deterministic sampler. Each update consumes three samples: GPUs 1/2/3, batch 1, accumulation 1. Both arms retain the CLEAR loss, Sliding and stock FLA KDA.
 
 The calibrated arm adds a fixed per-layer, per-head bias to text-key logits for image queries in the 28 joint layers. Text queries and the five image-only layers are unchanged. Within each conditional image or text distribution, relative scores are unchanged; the bias changes their joint softmax mixture. KDA itself is unchanged. This ablation does not implement MM-EDiT's kernel attention or token-count mixture.
 
 The calibration bias is the mean of `logsumexp(local image scores) - logsumexp(all image scores)` on four cached samples at noise levels 0.2, 0.5 and 0.8. A query-specific value would restore the full-attention text mass for that same Q/K; a fixed per-head mean is an approximation. Two further samples are used for the independent check. Measurements use 64 spatial query positions, all heads, and all 33 replaced layers. Text-mass summaries exclude image-only layers and average sampled queries, heads, layers and noise levels.
 
-| Inputs | Full-attention text mass | Sliding11 text mass |
+| Inputs | Full-attention text mass | Sliding text mass |
 |---|---:|---:|
 | Teacher trajectory, calibration | 36.79% | 55.36% |
 | Teacher trajectory, independent samples | 35.10% | 53.28% |

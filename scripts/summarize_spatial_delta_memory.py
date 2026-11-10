@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pid._src.linear_pid.data import atomic_json
+from pid._src.common.data import atomic_json
 
 
 def bootstrap(values):

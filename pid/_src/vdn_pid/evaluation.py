@@ -8,10 +8,10 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
-from pid._src.linear_pid.data import atomic_json
-from pid._src.linear_pid.evaluation import _load_asset, asset_cases, save_views, tensor_image
-from pid._src.linear_pid.runtime import sample
-from pid._src.linear_pid.training import init_distributed
+from pid._src.common.data import atomic_json
+from pid._src.common.evaluation import _load_asset, asset_cases, save_views, tensor_image
+from pid._src.common.runtime import sample
+from pid._src.common.training import init_distributed
 
 from .attention import JointVDN, execution_mode
 from .checkpoint import delta_state, load_delta, load_state, verify_base

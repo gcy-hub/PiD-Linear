@@ -10,11 +10,11 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from pid._src.linear_pid.data import atomic_json, sha256_file
-from pid._src.linear_pid.evaluation import save_views, tensor_image
-from pid._src.linear_pid.text_encoder import NEGATIVE_PROMPT
+from pid._src.common.data import atomic_json, sha256_file
+from pid._src.common.evaluation import save_views, tensor_image
+from pid._src.common.text_encoder import NEGATIVE_PROMPT
 from .conditioning import PixelDiTTextEncoder
-from pid._src.linear_pid.training import init_distributed
+from pid._src.common.training import init_distributed
 from pid._src.vdn_pid.attention import execution_mode
 from pid._src.vdn_pid.checkpoint import load_delta, load_state, verify_base
 from pid._src.vdn_pid.config import VDNConfig

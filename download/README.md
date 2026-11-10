@@ -56,7 +56,7 @@ listed in `download_metadata.py`.
 
 The PiD download selects only the undistilled FLUX checkpoint, rather than all
 PiD variants. KDA is initialized in code and requires no additional model weights.
-Trained Linear-PiD checkpoints are produced by training and are not included in
+Trained PiD adaptation checkpoints are produced by training and are not included in
 these upstream downloads.
 
 ## Individual download commands

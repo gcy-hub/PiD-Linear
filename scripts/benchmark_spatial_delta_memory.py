@@ -9,9 +9,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from pid._src.linear_pid.data import atomic_json, sha256_file
-from pid._src.linear_pid.evaluation import _load_asset, asset_cases, save_views, tensor_image
-from pid._src.linear_pid.runtime import build_net, load_original, sample
+from pid._src.common.data import atomic_json, sha256_file
+from pid._src.common.evaluation import _load_asset, asset_cases, save_views, tensor_image
+from pid._src.common.runtime import build_net, load_original, sample
 from pid._src.vdn_pid.attention import execution_mode
 from pid._src.vdn_pid.benchmark import implementation_fingerprint
 from pid._src.vdn_pid.checkpoint import load_delta, load_state, verify_base

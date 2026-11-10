@@ -1,4 +1,6 @@
-# Sliding11 + KDA 性能诊断
+# Sliding + KDA 性能诊断
+
+本实验的滑动窗口大小为 11×11 tokens。
 
 剩余 FLUX3 4K 整图生成及等待任务已停止。诊断只做预热后的短时单层 CUDA event 计时与一次 profiler 采样，无训练。模型实现未修改。
 
@@ -9,9 +11,9 @@ A40，BF16，24 heads × 128 head dim，图像 16384 tokens，batch 1。FLUX2 �
 | 单层组件 | 毫秒 |
 |---|---:|
 | 原生 attention，512 文本 tokens | 33.09 |
-| FLUX2 Sliding11，512 文本 tokens | 11.79 |
+| FLUX2 Sliding，512 文本 tokens | 11.79 |
 | 原生 attention，80 文本 tokens | 30.38 |
-| FLUX3 Sliding11，80 文本 tokens | 8.18 |
+| FLUX3 Sliding，80 文本 tokens | 8.18 |
 | KDA 完整分支，行正向、FP32 master | 25.62 |
 | KDA 核心 chunk_kda | 8.00 |
 | 新增 gate/out 两个稠密投影 | 5.14 |
@@ -28,7 +30,7 @@ KDA 完整分支包括原始二维 K/V depthwise 卷积、SiLU、衰减与 beta 
 
 预先将 KDA 矩阵权重转为 BF16 仅将行正向分支从 25.62 降至 25.57 ms，说明其 master 权重转换不是该分支的主要瓶颈；这不等于完整模型所有权重转换都已测量。
 
-## Sliding11 的块稀疏粒度
+## Sliding 的块稀疏粒度
 
 FlexAttention 已实际减少工作量，没有证据表明局部 attention 退回全局密集计算。但二维滑窗映射到一维 token 块后，稀疏块覆盖范围大于实际窗口。
 
@@ -36,7 +38,7 @@ FlexAttention 已实际减少工作量，没有证据表明局部 attention 退�
 
 ## 4K 单层短测
 
-65536 图像 tokens、80 文本 tokens：原生 attention 497.82 ms，Sliding11 55.90 ms，完整行正向 KDA 分支 135.07 ms。后两项合计约 190.97 ms，单层 attention 部分约为原生耗时的 38%。因此 4K 已显示计算量优势；FFN、投影等仍需计入整图时间，不能据此宣称整图提速 2.6 倍。
+65536 图像 tokens、80 文本 tokens：原生 attention 497.82 ms，Sliding 55.90 ms，完整行正向 KDA 分支 135.07 ms。后两项合计约 190.97 ms，单层 attention 部分约为原生耗时的 38%。因此 4K 已显示计算量优势；FFN、投影等仍需计入整图时间，不能据此宣称整图提速 2.6 倍。
 
 ## 优化优先级
 

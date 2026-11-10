@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from pid._src.linear_pid.data import atomic_json, sha256_file
+from pid._src.common.data import atomic_json, sha256_file
 from pid._src.networks.pixeldit_official import MMDiTJointAttention
 
 from .attention import JointVDN

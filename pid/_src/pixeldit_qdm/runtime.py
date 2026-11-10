@@ -2,7 +2,7 @@
 from pathlib import Path
 import torch
 from pid._src.networks.pixeldit_official import PixDiT_T2I
-from pid._src.linear_pid.text_cache import TextCacheReader
+from pid._src.common.text_cache import TextCacheReader
 from .conditioning import PixelDiTTextEncoder, load_null_cache
 
 PIXELDIT_KWARGS = dict(
@@ -77,7 +77,7 @@ class TextConditioning:
             self.null_embs=special['null_embs'].to(self.device)
             self.null_mask=special['null_mask'].to(self.device)
         else:
-            from pid._src.linear_pid.text_encoder import NEGATIVE_PROMPT
+            from pid._src.common.text_encoder import NEGATIVE_PROMPT
             embeddings,masks=self.encoder.encode_raw(['',NEGATIVE_PROMPT])
             self.empty_embs,self.empty_mask=embeddings[:1],masks[:1]
             self.null_embs,self.null_mask=embeddings[1:],masks[1:]

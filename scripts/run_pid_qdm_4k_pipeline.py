@@ -256,11 +256,11 @@ def prepare(a):
         atomic_json(marker, done)
         raise RuntimeError(f'Download incomplete: {coverage}. Rerun to retry missing source URLs; training has not started.')
     reserved = ','.join(c['sample_id'] for c in json.loads(CASE_SPEC.read_text())['cases'] if c['kind']=='real')
-    phase('index', [sys.executable, 'scripts/prepare_linear_pid_data.py', '--dataset-root', a.dataset_root,
+    phase('index', [sys.executable, 'scripts/prepare_pid_data.py', '--dataset-root', a.dataset_root,
                     '--output-root', a.dataset_root/'linear_pid_index', '--workers', a.index_workers,
                     '--seed', '42', '--validation-size', '1024', '--validation-ids', reserved,
                     '--image-verification', 'header', '--resume'], [a.dataset_root/'linear_pid_index/index.json'])
-    phase('text', distributed_command(a, 'scripts.prepare_linear_pid_text_cache',
+    phase('text', distributed_command(a, 'scripts.prepare_pid_text_cache',
               '--dataset-root', a.dataset_root, '--output-root', a.dataset_root/'linear_pid_text_cache',
               '--weights-root', a.weights_root, '--batch-size', a.text_batch_size, '--workers', a.workers,
               '--threads', a.threads, '--max-seconds', '0', '--resume'), [a.dataset_root/'linear_pid_text_cache/cache.json'])

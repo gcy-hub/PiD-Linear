@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-from pid._src.linear_pid.data import BUCKETS, RawImageDataset, atomic_json
+from pid._src.common.data import BUCKETS, RawImageDataset, atomic_json
 
 
 def prepare_subsets(index_root, output_root, small=20000, large=50000, seed=42, workers=4):

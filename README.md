@@ -1,4 +1,4 @@
-# FLUX3 Sliding11 + KDA
+# FLUX3 Sliding + KDA
 
 代码工作目录为 `/home/ganchangyi/code/PiD-Linear`，实验目录为 `/home/ganchangyi/code/experiment`。每个实验使用独立子目录存放断点、图片和日志；同一实验的独立阶段或对照组分别保留最新完整断点。仓库内的 `outputs` 是指向实验目录的符号链接，供已有脚本使用。切换分支前先停止运行中的训练与验证。断点及本机归档说明见 [工作目录](docs/workspace.md)。
 
@@ -135,7 +135,7 @@ Re-submit the same command to resume an interrupted allocation. Finished and val
 git clone --branch codex/spatially-disambiguated-delta-memory \
   https://github.com/gcy-hub/PiD-Linear.git
 cd PiD-Linear
-bash scripts/setup_linear_pid_env.sh
+bash scripts/setup_pid_env.sh
 conda activate linear-pid
 
 # Gemma 需要先在 Hugging Face 接受模型条款。
@@ -213,7 +213,7 @@ export PID_TEXT_CACHE_ROOT=""
 ```bash
 conda activate linear-pid
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 OMP_NUM_THREADS=1 \
-torchrun --standalone --nproc_per_node=8 -m scripts.prepare_linear_pid_text_cache \
+torchrun --standalone --nproc_per_node=8 -m scripts.prepare_pid_text_cache \
   --dataset-root "$PID_TRAINING_ROOT/prompts" \
   --output-root "$PID_TRAINING_ROOT/text_cache" \
   --weights-root "$PID_WEIGHTS_ROOT" --batch-size 8 \

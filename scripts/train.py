@@ -18,15 +18,6 @@ import sys
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-# Linear-PiD owns its optimizer/checkpoint lifecycle; keep legacy DMD training untouched.
-if __name__ == "__main__" and any(
-    arg.endswith("pid/_src/configs/linear_pid/config.py") for arg in sys.argv[1:]
-):
-    from pid._src.linear_pid.training import main as linear_pid_main
-
-    linear_pid_main()
-    raise SystemExit(0)
-
 import argparse
 import importlib
 import time

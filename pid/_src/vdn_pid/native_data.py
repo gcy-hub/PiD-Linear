@@ -16,7 +16,7 @@ from tqdm import tqdm
 from pid._src.datasets.augmentors.multi_resolution_aspect_ratio import (
     MULTI_RES_GRID_BY_MAX_RESOLUTION, _classify_aspect_ratio,
 )
-from pid._src.linear_pid.data import RawImageDataset, GlobalBatchSampler, atomic_json
+from pid._src.common.data import RawImageDataset, GlobalBatchSampler, atomic_json
 
 
 def native_target(width, height, max_resolution=3840):

@@ -302,7 +302,7 @@ def main():
     if manifest.exists() and json.loads(manifest.read_text())!=protocol:
         raise ValueError('Diagnostic output belongs to another checkpoint/protocol')
     if rank==0:
-        from pid._src.linear_pid.data import sha256_file
+        from pid._src.common.data import sha256_file
         actual=sha256_file(payload['config']['teacher_checkpoint'])
         if actual!=protocol['base_sha256']:raise ValueError('Native base checkpoint fingerprint mismatch')
         write_json(manifest,protocol)

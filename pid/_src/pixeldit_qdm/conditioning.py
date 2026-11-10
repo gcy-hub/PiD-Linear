@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 
 import torch
-from pid._src.linear_pid.text_cache import TextCacheReader
-from pid._src.linear_pid.text_encoder import GemmaTextEncoder, NEGATIVE_PROMPT
+from pid._src.common.text_cache import TextCacheReader
+from pid._src.common.text_encoder import GemmaTextEncoder, NEGATIVE_PROMPT
 
 
 class PixelDiTTextEncoder(GemmaTextEncoder):

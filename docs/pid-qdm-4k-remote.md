@@ -26,7 +26,7 @@ generated_019 generated_022 real_011 real_028
 首次准备服务器环境；已有兼容的 `linear-pid` 可直接使用：
 
 ```bash
-bash scripts/setup_linear_pid_env.sh
+bash scripts/setup_pid_env.sh
 conda activate linear-pid
 ```
 

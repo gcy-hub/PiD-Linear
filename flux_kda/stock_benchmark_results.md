@@ -1,6 +1,8 @@
 # 标准 FLA KDA：2K / 4K 生成效率
 
-FLUX2、FLUX3 均使用本地原始权重；修改版为 Sliding11 + 标准 FLA `KimiDeltaAttention`，按层轮换行正向、行反向、列正向、列反向。新增分支未训练，使用标准初始化。架构标识：`sliding-stock-fla-kda-v2`。
+本实验的滑动窗口大小为 11×11 tokens。
+
+FLUX2、FLUX3 均使用本地原始权重；修改版为 Sliding + 标准 FLA `KimiDeltaAttention`，按层轮换行正向、行反向、列正向、列反向。新增分支未训练，使用标准初始化。架构标识：`sliding-stock-fla-kda-v2`。
 
 配置：20 步、CFG 3.5、seed 0，提示词 `A red double-decker bus on a rainy London street, reflections on wet asphalt`。四张 NVIDIA A40：GPU0 顺序执行 FLUX2 2K 两版，GPU1 顺序执行 FLUX3 2K 两版，GPU2 执行 FLUX3 4K 原版，GPU3 执行 FLUX3 4K 修改版。Torch 2.10.0+cu128，BF16 矩阵计算；修改版推理前一次性转换矩阵权重，KDA A_log/dt_bias 保留 FP32。
 

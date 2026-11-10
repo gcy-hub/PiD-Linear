@@ -37,7 +37,7 @@ def load_base(kind,weights):
         from .runtime import load_net,checkpoint_path
         net=load_net(checkpoint_path(weights/'PixelDiT-T2I'))
     else:
-        from pid._src.linear_pid.runtime import build_net
+        from pid._src.common.runtime import build_net
         from pid._src.vdn_pid.config import BASE_RELATIVE
         with torch.device('meta'):net=build_net()
         state=torch.load(weights/BASE_RELATIVE,map_location='cpu',mmap=True,weights_only=True)
@@ -105,7 +105,7 @@ def snapshots(net,a,args,root,teacher_context):
         save_tensor(path,data);im.save(root/'original.png')
         return [(item['target'],item['x'].cuda(),item['t'].cuda()) for item in data]
     from .runtime import sample as pixel_sample
-    from pid._src.linear_pid.runtime import sample as pid_sample
+    from pid._src.common.runtime import sample as pid_sample
     targets=args.times;best={};calls=[0]
     def capture(module,inputs,kwargs):
         index=calls[0];calls[0]+=1
@@ -187,7 +187,7 @@ def run_mask(net,a,args,root):
         print(f'{args.model} {args.case} mask target={target} t={float(t[0]):.2f} saved',flush=True)
     if args.generate:
         from .runtime import sample as pixel_sample
-        from pid._src.linear_pid.runtime import sample as pid_sample
+        from pid._src.common.runtime import sample as pid_sample
         fn=pid_sample if args.model=='pid' else pixel_sample
         for count in args.generate:
             path=root/f'mask_{count}.png'
@@ -219,7 +219,7 @@ def run_control(net,a,args,root):
         rows.append(dict(target=target,actual_t=float(t[0]),prediction=error_metrics(value,reference)))
     write_json(root/'numerical-control.json',rows)
     from .runtime import sample as pixel_sample
-    from pid._src.linear_pid.runtime import sample as pid_sample
+    from pid._src.common.runtime import sample as pid_sample
     fn=pid_sample if args.model=='pid' else pixel_sample
     image=fn(net,a['caption_embs'],a['caption_mask'],a['null_embs'],a['null_mask'],a.get('latent'),
              height=a['height'],width=a['width'],seed=a['seed'],steps=25 if args.model=='pid' else 50,

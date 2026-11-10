@@ -21,10 +21,10 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from pid._src.linear_pid.checkpoint import restore_rng
-from pid._src.linear_pid.data import GlobalBatchSampler, RawImageDataset, atomic_json, collate_raw, sha256_file
-from pid._src.linear_pid.runtime import Conditioning, build_net, load_original
-from pid._src.linear_pid.training import broadcast_object, consensus, init_distributed, lock_training_run
+from pid._src.common.checkpoint import restore_rng
+from pid._src.common.data import GlobalBatchSampler, RawImageDataset, atomic_json, collate_raw, sha256_file
+from pid._src.common.runtime import Conditioning, build_net, load_original
+from pid._src.common.training import broadcast_object, consensus, init_distributed, lock_training_run
 from pid._src.models.latent_noising import LatentNoiser, LatentNoisingConfig
 from pid._src.networks.flow_matching import FlowMatchingTrainer
 
