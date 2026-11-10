@@ -33,7 +33,7 @@ class Toy(nn.Module):
         return ModelOutput(y, {k: y for k in capture})
     def layerwise(self, batch, callback):
         x = batch.inputs['x'].detach()
-        callback(SimpleNamespace(teacher=x, student=x*self.branch))
+        callback(SimpleNamespace(layer=SimpleNamespace(name='early_image.0'), teacher=x, student=x*self.branch))
 
 
 class Loader:

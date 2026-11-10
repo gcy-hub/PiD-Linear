@@ -74,28 +74,43 @@ def segment(config, resume=None):
             print(dict(stage=stage, parameters={role: sum(r.parameter.numel() for r in roles if r.role == role) for role in sorted({r.role for r in roles})}, feature_layers=list(config.feature_layers), feature_tap=config.feature_tap), flush=True)
         while True:
             optimizer.zero_grad(set_to_none=True)
+            batches = []
+            layerwise_losses = []
+            if stage == 'a1':
+                batches = [adapter.prepare_batch(next(loader), generator=generator)
+                           for _ in range(config.training.accumulation)]
+                with torch.autocast(device.type, dtype=getattr(torch, config.runtime.dtype),
+                                    enabled=config.runtime.dtype != 'float32'):
+                    energies = vdn.teacher_energy(adapter, batches)
             for micro in range(config.training.accumulation):
-                batch = adapter.prepare_batch(next(loader), generator=generator)
+                batch = batches[micro] if stage == 'a1' else adapter.prepare_batch(next(loader), generator=generator)
                 progress['cursor'] += 1
                 sync = student.no_sync() if isinstance(student, DDP) and micro+1 < config.training.accumulation else nullcontext()
                 with sync:
-                    if stage == 'a1':
-                        loss = vdn.backward_layerwise(adapter, batch, config.training.accumulation)
-                    else:
-                        capture = tuple(config.feature_layers) if stage == 'clear' else ()
-                        with torch.no_grad():
-                            teacher = adapter.forward(batch, teacher=True, capture=capture)
-                        output = student(batch, capture=capture)
-                        if stage == 'clear':
-                            loss = clear.objective(output, teacher, batch.target, capture, config.training.loss)
+                    with torch.autocast(device.type, dtype=getattr(torch, config.runtime.dtype),
+                                        enabled=config.runtime.dtype != 'float32'):
+                        if stage == 'a1':
+                            loss = vdn.backward_layerwise(adapter, batch, energies)
+                            layerwise_losses.append(loss)
                         else:
-                            objective = config.training.vdn[stage].objective
-                            if objective not in ('teacher', 'fm'):
-                                raise ValueError(f'Unknown VDN objective: {objective}')
-                            target = teacher.prediction if objective == 'teacher' else batch.target
-                            loss = torch.nn.functional.mse_loss(output.prediction.float(), target.float())
+                            capture = tuple(config.feature_layers) if stage == 'clear' else ()
+                            with torch.no_grad():
+                                teacher = adapter.forward(batch, teacher=True, capture=capture)
+                            output = student(batch, capture=capture)
+                            if stage == 'clear':
+                                loss = clear.objective(output, teacher, batch.target, capture, config.training.loss)
+                            else:
+                                objective = config.training.vdn[stage].objective
+                                if objective not in ('teacher', 'fm'):
+                                    raise ValueError(f'Unknown VDN objective: {objective}')
+                                target = teacher.prediction if objective == 'teacher' else batch.target
+                                loss = torch.nn.functional.mse_loss(output.prediction.float(), target.float())
+                    if stage != 'a1':
                         (loss/config.training.accumulation).backward()
             if stage == 'a1':
+                loss = torch.stack(layerwise_losses).sum()
+                if dist.is_initialized():
+                    dist.all_reduce(loss)
                 average_gradients(parameters)
                 for layer in sorted({r.layer for r in roles}):
                     torch.nn.utils.clip_grad_norm_([r.parameter for r in roles if r.layer == layer], .1)

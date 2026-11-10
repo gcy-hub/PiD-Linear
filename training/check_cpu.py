@@ -24,8 +24,7 @@ class Toy(nn.Module):
     def role_parameters(self):
         return [RoleParameter('p', self.p, 'branch', 'layer'), RoleParameter('gate', self.gate, 'local_gate', 'layer')]
     def layerwise(self, batch, callback):
-        callback(SimpleNamespace(teacher=self.base.detach(), student=self.p * self.base.detach()))
-        assert self.p.grad is not None
+        callback(SimpleNamespace(layer=SimpleNamespace(name='layer'), teacher=self.base.detach(), student=self.p * self.base.detach()))
         assert self.base.grad is None
 
 
@@ -33,7 +32,8 @@ def main():
     toy = Toy()
     assert [r.name for r in select_roles(toy, 'a1')] == ['p']
     toy.p.data.fill_(2.)
-    vdn.backward_layerwise(toy, None, 2)
+    energies = vdn.teacher_energy(toy, [None, None])
+    vdn.backward_layerwise(toy, None, energies)
     assert torch.allclose(toy.p.grad, torch.tensor(1.))
     assert {r.name for r in select_roles(toy, 'b')} == {'p', 'gate'}
     s = ModelOutput(torch.tensor([2.]), {'layer': torch.tensor([3.], requires_grad=True)})

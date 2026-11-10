@@ -153,7 +153,19 @@ class NativeModel(nn.Module):
         target = noise.float()-clean.float()
         embeddings = text['embeddings']
         drop = torch.rand(n, device=device, generator=generator) < self.config.data.caption_dropout
-        embeddings = embeddings * (~drop).reshape(n, *([1]*(embeddings.ndim-1)))
+        if self.config.data.caption_dropout > 0:
+            length = max(embeddings.shape[1], text['empty_embeddings'].shape[1])
+            for key in ('embeddings', 'mask', 'text_ids'):
+                if key not in text:
+                    continue
+                values = []
+                for source in (key, 'empty_' + key):
+                    value = text[source]
+                    padding = value.new_zeros(n, length - value.shape[1], *value.shape[2:])
+                    values.append(torch.cat((value, padding), dim=1))
+                text[key] = torch.where(drop.reshape(n, *([1]*(values[0].ndim-1))),
+                                        values[1], values[0])
+            embeddings = text['embeddings']
         if self.family == 'pid':
             condition = image['condition']
             sigma = torch.rand(n, device=device, generator=generator)*0.8
