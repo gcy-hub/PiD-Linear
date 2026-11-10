@@ -62,4 +62,4 @@ CLEAR 参考 [官方源码 ddca131](https://github.com/Huage001/CLEAR/tree/ddca1
 
 ## Limitations
 
-集成后的 prepare/cache/sample CLI、真实资源配置和四卡数值验收仍依赖各 writer 交付，文档中的支持矩阵不代表运行通过。H800 八卡 4K、每卡 batch 4 的峰值显存与多步训练单列未验证。功能验收不替代长程收敛和画质评估。
+prepare/cache/sample CLI 见使用流程，资源绑定生成命令见验收文档。真实资源及四卡数值验收尚待执行，支持矩阵不代表运行通过。H800 八卡 4K、每卡 batch 4 的峰值显存与多步训练单列未验证。功能验收不替代长程收敛和画质评估。

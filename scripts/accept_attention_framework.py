@@ -62,7 +62,9 @@ def run_case(name, binding, report_dir, *, execute, gpu):
     try:
         with (report_dir / f'{name}.log').open('w') as log:
             completed = subprocess.run(argv, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
-        result.update(returncode=completed.returncode, status='passed' if completed.returncode == 0 else 'failed', reason='')
+        result.update(returncode=completed.returncode,
+                      status='passed' if completed.returncode == 0 else 'blocked' if completed.returncode == 77 else 'failed',
+                      reason='Required local resources or execution evidence unavailable; see scenario log' if completed.returncode == 77 else '')
     except OSError as exc:
         result['reason'] = str(exc)
     result['finished'] = now()
@@ -71,17 +73,18 @@ def run_case(name, binding, report_dir, *, execute, gpu):
 
 def summarize(results):
     # Every Verification item appears, even when downstream interfaces are unavailable.
-    groups = {str(i): [] for i in range(1, 9)}
-    for name, result in results.items():
-        items = [result['verification']]
-        if name in ('pid', 'flux2', 'flux3'):
-            items += [4, 6]
-        if name == 'common':
-            items += [2]
-        for item in items:
-            groups[str(item)].append(result['status'])
-    return {key: ('passed' if values and all(v == 'passed' for v in values) else
-                  'failed' if 'failed' in values else 'blocked') for key, values in groups.items()}
+    required = {
+        '1': ('config_data',), '2': ('pid', 'flux2', 'flux3', 'common'),
+        '3': ('common',), '4': ('pid', 'flux2', 'flux3'),
+        '5': ('distributed', 'pid_cycle', 'flux2_cycle', 'flux3_cycle'),
+        '6': ('pid', 'flux2', 'flux3', 'pid_cycle', 'flux2_cycle', 'flux3_cycle'),
+        '7': ('convergence',), '8': ('handoff',),
+    }
+    groups = {key: [results.get(name, {}).get('status', 'blocked') for name in names]
+              for key, names in required.items()}
+    return {key: ('failed' if 'failed' in values else
+                  'passed' if all(v == 'passed' for v in values) else 'blocked')
+            for key, values in groups.items()}
 
 
 def main(argv=None):

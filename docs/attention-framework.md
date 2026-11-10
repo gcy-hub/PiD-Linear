@@ -4,7 +4,31 @@
 
 数据使用实际 manifest 的记录数，不使用写死的 80K/50K 长度。JSONL/CSV 中的样本身份、caption、尺寸及相对图像路径交给统一 loader；路径相对 manifest。预处理保留 EXIF 方向、等比缩放/裁剪、过小样本拒绝统计。默认桶复用 `pid/_src/datasets/buckets.py`；小分辨率验收配置单独指定小桶，不修改官方桶表。
 
-下载→manifest/桶准备→可选缓存→训练→保存/验证/恢复的顺序固定。下载命令见 [download](../download/README.md)，训练命令见 [README](../README.md)。数据 writer 的 prepare/cache CLI 和训练 writer 的独立采样 CLI 在集成时核对并补入命令示例；这些入口未交付前，不以历史缓存命令代替新框架缓存。
+下载→manifest/桶准备→可选缓存→训练→保存/验证/恢复的顺序固定。下载命令见 [download](../download/README.md)，训练命令见 [README](../README.md)。manifest 支持 JSONL、CSV 和带索引的数据目录，loader 在第一次读取时完成桶选择与过小样本过滤，没有单独的桶索引生成 CLI。JSONL 每行例如 `{"id":"one","image_path":"images/one.png","caption":"a landscape"}`；图像路径相对 manifest。
+
+先在本地模型 YAML 中填写 `model.resources.weights/vae/text_encoder/tokenizer`，在数据 YAML 中填写 manifest 与桶。缓存准备调用实际编码器：
+
+```bash
+python -m data.prepare \
+  --model-config "$MODEL_CONFIG" \
+  --algorithm-config configs/algorithms/sliding_qdm.yaml \
+  --training-config configs/training/clear.yaml \
+  --data-config "$DATA_CONFIG" \
+  --phase all --devices cuda:0 cuda:1 --cache-batch-size 1 \
+  cache.root="$CACHE_ROOT"
+```
+
+`--phase image|text|all` 分别准备两类缓存；训练通过 `cache.image=true cache.text=true cache.root="$CACHE_ROOT"` 选择读取。准备无需启用训练缓存开关。设备列表按样本分配，当前实现依次处理各设备，不表示并行 worker；FLUX3 文本保持逐样本编码。再次执行会跳过身份匹配的项，失败记录位于 cache.root/failures.json。缓存命令不是 print-config：即使传入该开关也会进入准备流程。
+
+训练与自动保存/验证用 README 的 `python -m training.run`。已发布断点可以独立采样：
+
+```bash
+python -m training.validate \
+  --config "$OUTPUT/resolved.yaml" \
+  --checkpoint "$OUTPUT/step-000000010"
+```
+
+checkpoint 参数是包含 complete.json 与全部 rank shard 的目录。输出为该目录下的 validation/sample.png，成功后写 validated.json。采样使用数据配置中的第一张图与 caption、`validation.steps/seed`，正文本 CFG=1；FLUX2 使用内嵌 guidance=4。采样会加载真实 TE/VAE，不继承训练缓存省编码器的行为。需要调整采样配置时复制 resolved.yaml 修改；不要用历史 checkpoint。
 
 | `cache.image` | `cache.text` | 训练时加载 |
 |---|---|---|
@@ -29,4 +53,4 @@ PiD 保存完整 RGB 训练目标和干净的低分辨率 VAE condition；缓存
 
 ## Limitations
 
-prepare/cache/独立 sample 的可复制新入口命令需要集成 D/T 的最终 CLI。该项与真实资源配置、全量 GPU 检查一起列为交付阻塞，不能据此宣称完整流程已验收。
+真实资源、GPU 数值检查与完整闭环尚待验收。缓存与采样入口可执行不代表这些检查已经通过。

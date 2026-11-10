@@ -31,6 +31,8 @@ class ControllerTest(unittest.TestCase):
             result = acceptance.run_case('config_data', binding, Path(directory), execute=True, gpu='')
             self.assertEqual(result['status'], 'failed')
             self.assertEqual(result['returncode'], 7)
+            binding['argv'] = [sys.executable, '-c', 'raise SystemExit(77)']
+            self.assertEqual(acceptance.run_case('config_data', binding, Path(directory), execute=True, gpu='')['status'], 'blocked')
             binding['argv'] = ['/nonexistent']
             self.assertEqual(acceptance.run_case('config_data', binding, Path(directory), execute=True, gpu='')['status'], 'blocked')
 
