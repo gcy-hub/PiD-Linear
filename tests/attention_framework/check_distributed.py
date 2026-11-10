@@ -13,6 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from omegaconf import OmegaConf
 from training.distributed import setup, average_gradients
 from training.check_cpu import Toy
+from attention_framework.contracts import RoleParameter
 from training.optim import build_optimizer
 from training.checkpoint import save, read, restore
 
@@ -41,14 +42,19 @@ def main():
                 (ddp(torch.tensor([[float(rank + 1)]], device=device)).sum() / 2).backward()
         assert linear.weight.grad.item() == expected
         toy.gate.requires_grad_(True)
-        cfg = OmegaConf.create(dict(training=dict(optimizer='adamw', lr=.01, weight_decay=0., scheduler='constant', steps=4),
+        toy.extra = torch.nn.ParameterList([torch.nn.Parameter(torch.ones((), device=device)) for _ in range(world)])
+        roles = toy.role_parameters() + [RoleParameter(f'extra.{i}', p, 'branch', 'layer')
+                                         for i, p in enumerate(toy.extra)]
+        toy.role_parameters = lambda: roles
+        parameters = [r.parameter for r in roles]
+        cfg = OmegaConf.create(dict(training=dict(optimizer='adamw' if args.cpu else 'prodigy', lr=.01, weight_decay=0., scheduler='constant', steps=4),
                                     runtime=dict(optimizer_sharding=True)))
         optimizer, scheduler = build_optimizer(cfg, toy.role_parameters(), 'clear')
         generator = torch.Generator(device=device).manual_seed(42 + rank)
         def update():
             optimizer.zero_grad()
-            ((toy.p + toy.gate) * torch.rand((), device=device, generator=generator)).backward()
-            average_gradients([toy.p, toy.gate])
+            ((toy.p + toy.gate + sum(toy.extra)) * torch.rand((), device=device, generator=generator)).backward()
+            average_gradients(parameters)
             optimizer.step()
             scheduler.step()
         update()
@@ -57,10 +63,10 @@ def main():
         directory = save(root, toy, optimizer, scheduler, generator, progress, cfg, rank, world)
         state = read(directory, rank, world)
         update()
-        expected_weights = [p.detach().clone() for p in (toy.p, toy.gate)]
+        expected_weights = [p.detach().clone() for p in parameters]
         restore(state, toy, optimizer, scheduler, generator)
         update()
-        for got, want in zip((toy.p, toy.gate), expected_weights):
+        for got, want in zip(parameters, expected_weights):
             torch.testing.assert_close(got, want, rtol=0, atol=0)
         # All ranks must reject an incomplete rank set, including an absent peer.
         dist.barrier()

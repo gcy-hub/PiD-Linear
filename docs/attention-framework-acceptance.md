@@ -21,7 +21,7 @@ CUDA_VISIBLE_DEVICES='' python -m unittest discover -s tests/attention_framework
 | `flux2` | 物理 GPU1 | 真实 double/single 层 × 四算法与编码/四缓存组合；原生 packing/归一化；融合 FFN 未更新；无替换原生一致 |
 | `flux3` | 物理 GPU2 | 真实 early_image/joint 层 × 四算法与编码/四缓存组合；原生 latent/IDs；无替换原生一致 |
 | `common` | 物理 GPU3 | CUDA/reference 前后向；12 pairs 与 21 strategies 小模型；文本/多样本隔离、矩形/halo padding、部分选择不改 KDA 序号；QDM/KDA 投影位置；A1 teacher trunk/独立图、A2/B 角色/切换、CLEAR tap 梯度到远程分支；student 更新后 teacher 权重/输出不变；CLEAR+VDN 拒绝 |
-| `distributed` | 上述进程退出后，GPU0–3 四 rank torchrun | A1 手动梯度平均对齐单进程全局 batch；A2/B/CLEAR DDP；accumulation；FP32 小更新跨保存恢复；rank-local shard/优化器/调度器/RNG/cursor 连续与恢复下一步一致；缺 shard 报错；发布前注入保存失败保留上次 complete；验证期间无训练 NCCL group |
+| `distributed` | 上述进程退出后，GPU0–3 四 rank torchrun | A1 手动梯度平均对齐单进程全局 batch；A2/B/CLEAR DDP；accumulation；FP32 小更新跨保存恢复；CUDA 分片 Prodigy；rank-local shard/优化器/调度器/RNG/cursor 连续与恢复下一步一致；缺 shard 报错；发布前注入保存失败保留上次 complete；验证期间无训练 NCCL group |
 | `pid_cycle` | 随后串行，GPU0–3 | 真实小分辨率 train→save→resume→generate；连续/恢复参数与下一步一致；VDN 阶段内/边界；验证中断先补图；独立保存/验证频率边界 |
 | `flux2_cycle` | 同上 | 同上，原生 FLUX2 真实资源 |
 | `flux3_cycle` | 同上 | 同上，原生 FLUX3 真实资源 |

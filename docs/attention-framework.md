@@ -43,6 +43,8 @@ PiD 保存完整 RGB 训练目标和干净的低分辨率 VAE condition；缓存
 
 `runtime.gradient_checkpointing`、`runtime.optimizer_sharding`、`runtime.activation_cpu_offload`、`runtime.optimizer_cpu_offload` 是默认关闭的显存选项。算法所需 FP32 状态和可靠优化器更新不属于可删除选项。开启选项时，验收必须记录实际分辨率、每卡 batch、累积、dtype 与峰值显存；缩小输入仅说明正确性，不证明目标 4K 不 OOM。
 
+`runtime.dtype` 支持 `float32` 和 `bfloat16`，默认 BF16；FP16 训练因缺少 loss scaling 在配置边界拒绝。Prodigy 使用 FP32 master 保存细小更新。VDN A1 先汇总各层在所有 rank 和累积 microbatch 上的 teacher 能量，再立即反传每个独立 student 图，保持完整 batch 的相对 MSE。
+
 新断点保存基础模型身份、替换配置、训练权重、优化器/调度器、RNG、rank-local microbatch cursor、VDN 阶段及阶段内/总步数。恢复通过 `checkpoint.resume=/path/to/complete-checkpoint` 覆盖；分片恢复要求固定 world size。分片先各自写入并完成发布，随后才淘汰上一完整集合。旧 checkpoint 不导入。
 
 `checkpoint.every` 和 `validation.every` 独立；验证边界也必须发布可恢复断点。所有训练 rank 退出后独立采样，再恢复训练；验证期间无训练 NCCL group 等待。验证中断后先补该断点待生成的图片，再继续下一步。
@@ -52,5 +54,7 @@ PiD 保存完整 RGB 训练目标和干净的低分辨率 VAE condition；缓存
 新增模型只需直接分派构建适配器，实现 `module`、`layers`、`role_parameters()`、`prepare_batch()`、`forward(..., teacher=False, capture=())` 和 `layerwise(batch, callback)`；编码器通过 `build_encoder(config, device=..., image=..., text=...)` 按需加载。原生组名/层序号、位置处理、QKV/O、feature taps、目标和采样必须明确。需要无替换原生一致性、四算法真实层、teacher 投影隔离、在线/缓存一致与完整恢复闭环。接口完整签名以共享约定为准。
 
 ## Limitations
+
+A1 每个 microbatch 需要额外一次 layerwise 前向，并保留整个累积窗口的已准备输入；当前接口在能量统计期间也计算 student 输出，各 callback 之间不保留 student 图。
 
 真实资源、GPU 数值检查与完整闭环尚待验收。缓存与采样入口可执行不代表这些检查已经通过。

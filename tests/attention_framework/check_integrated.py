@@ -103,9 +103,12 @@ def family_check(spec, family, out):
         close(batch.image, encoded_before, True)
         if family == 'pid':
             assert not torch.equal(train.inputs['lq_latent'], other.inputs['lq_latent'])
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast('cuda', dtype=getattr(torch, cfg.runtime.dtype),
+                                            enabled=cfg.runtime.dtype != 'float32'):
             teacher = model(train, teacher=True)
-        output = model(train, capture=tuple(cfg.feature_layers))
+        with torch.autocast('cuda', dtype=getattr(torch, cfg.runtime.dtype),
+                            enabled=cfg.runtime.dtype != 'float32'):
+            output = model(train, capture=tuple(cfg.feature_layers))
         assert output.prediction.shape == train.target.shape
         loss = output.prediction.float().square().mean()
         for feature in output.features.values():
@@ -114,7 +117,8 @@ def family_check(spec, family, out):
         loss.backward()
         assert any(r.parameter.grad is not None for r in model.role_parameters())
         assert all(torch.isfinite(r.parameter.grad).all() for r in model.role_parameters() if r.parameter.grad is not None)
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast('cuda', dtype=getattr(torch, cfg.runtime.dtype),
+                                            enabled=cfg.runtime.dtype != 'float32'):
             for role in model.role_parameters():
                 if role.parameter.grad is not None:
                     role.parameter.add_(role.parameter.grad, alpha=-.001)
@@ -125,7 +129,8 @@ def family_check(spec, family, out):
         torch.cuda.empty_cache()
         cfg.layer_specs = []
         native = build_model(cfg, device=torch.device('cuda'), algorithm_factory=build_attention)
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast('cuda', dtype=getattr(torch, cfg.runtime.dtype),
+                                            enabled=cfg.runtime.dtype != 'float32'):
             close(native(train).prediction, reference)
         del native, train, other
         torch.cuda.empty_cache()
@@ -202,7 +207,7 @@ def delivered_cpu():
     # These checks deliberately include stand-ins; they are CPU evidence only.
     for module in ('data.check_cpu', 'algorithms.checks.cpu', 'models.check_cpu',
                    'models.check_sampling_cpu', 'training.check_cpu', 'training.check_engine_cpu',
-                   'training.check_validate_cpu'):
+                   'training.check_validate_cpu', 'training.check_native_cpu', 'training.check_a1_cpu'):
         subprocess.run([sys.executable, '-m', module], check=True, cwd=ROOT,
                        env=dict(os.environ, CUDA_VISIBLE_DEVICES=''))
     subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests/attention_framework',

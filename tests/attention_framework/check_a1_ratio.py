@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from types import SimpleNamespace
 import torch
-from training.strategies.vdn import backward_layerwise
+from training.strategies.vdn import backward_layerwise, teacher_energy
 
 
 def check(device):
@@ -17,7 +17,8 @@ def check(device):
     expected = torch.nn.Parameter(p.detach().clone())
     numerator = (expected * 2 - 1).square() + (expected - 3).square()
     (numerator / 10).backward()
-    backward_layerwise(Adapter(), None, 1)
+    adapter = Adapter()
+    backward_layerwise(adapter, None, teacher_energy(adapter, [None]))
     torch.testing.assert_close(p.grad, expected.grad, rtol=1e-6, atol=1e-6)
     print('A1 callback ratio-of-sums gradient matches concatenated global reference')
 
