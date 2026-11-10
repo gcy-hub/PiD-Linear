@@ -1,2 +1,3 @@
 algorithm:
   name: qdm_halo
+  memory: {banks: 4, region_size: 8, halo: 2, chunk_size: 4096}

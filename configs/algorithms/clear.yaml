@@ -1,2 +1,3 @@
 algorithm:
   name: clear
+  clear: {radius: 16, down_factor: 1, train_grid: 64, proportional_attention: false}

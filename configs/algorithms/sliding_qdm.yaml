@@ -1,2 +1,4 @@
 algorithm:
   name: sliding_qdm
+  local: {window_size: 11}
+  memory: {banks: 4, region_size: 8, halo: 2, chunk_size: 4096}

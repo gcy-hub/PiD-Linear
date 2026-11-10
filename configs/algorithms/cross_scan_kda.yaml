@@ -1,2 +1,4 @@
 algorithm:
   name: cross_scan_kda
+  local: {window_size: 11}
+  kda: {expand_v: 1.0}
