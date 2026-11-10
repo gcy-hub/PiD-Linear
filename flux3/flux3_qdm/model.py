@@ -226,7 +226,8 @@ class Flux3QDM(nn.Module):
     def qdm_blocks(self):
         return tuple(iter_qdm_blocks(self))
 
-    def forward(self, packed, use_gradient_checkpointing=False, alignment_callback=None):
+    def forward(self, packed, use_gradient_checkpointing=False, alignment_callback=None, collect_features=False):
+        features = []
         samples = _layouts(packed)
         # Capture the execution mode once. Nonreentrant checkpoint recomputation is
         # correct even if a teacher/student context has since exited or changed.
@@ -258,11 +259,17 @@ class Flux3QDM(nn.Module):
             def run(z, f, shift, scale, gate):
                 if not isinstance(block, QDMBlock):
                     return block(z, f, bounds, (shift, scale, gate))
+                options = dict(return_attention_feature=True) if collect_features and getattr(block, 'collect_feature', False) else {}
                 return block(z, f, bounds, (shift, scale, gate), samples=layouts,
-                             alignment_callback=alignment_callback, teacher_mode=teacher)
+                             alignment_callback=alignment_callback, teacher_mode=teacher, **options)
             if use_gradient_checkpointing and not teacher and torch.is_grad_enabled():
-                return checkpoint(run, z, f, *mod, use_reentrant=False)
-            return run(z, f, *mod)
+                result = checkpoint(run, z, f, *mod, use_reentrant=False)
+            else:
+                result = run(z, f, *mod)
+            if isinstance(result, tuple):
+                result, feature = result
+                features.append(feature)
+            return result
 
         # Early image tokens are packed without text. Their QDM and local
         # visibility use the same explicit grids, but no fabricated text tokens.
@@ -304,7 +311,8 @@ class Flux3QDM(nn.Module):
             if m == "image":
                 image[a:b] = h[start : start + b - a]
         # Native final projection stays frozen but propagates student image gradients.
-        return base.final_layer["image"](image, vec["image"])
+        result = base.final_layer["image"](image, vec["image"])
+        return (result, features) if collect_features else result
 
 
 def build_model(weights_path, stage, device, region_size=8, lora_rank=64, lora_alpha=64, qdm_layers=None, halo=0, attention_mode="hybrid", memory_text_write=False, retain_lora=False, local_attention="halo", sliding_kernel_size=11, replace_image_blocks=False):

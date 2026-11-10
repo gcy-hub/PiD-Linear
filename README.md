@@ -1,4 +1,19 @@
-# PixelDiT-T2I + QDM Halo2
+# FLUX3 Sliding11 + KDA
+
+`main` 的默认训练入口是在线读取图片和 caption、编码、CLEAR 微调及独立验证。完整说明见 [FLUX KDA](flux_kda/README.md)，八卡配置见 [H800 4K 配置](flux_kda/configs/h800-8gpu-4k.json)。修改配置中的模型、资源和数据路径后运行：
+
+```bash
+export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
+OMP_NUM_THREADS=4 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+  python -m flux_kda.run --config flux_kda/configs/h800-8gpu-4k.json
+```
+
+配置为每卡 batch 4、累积 1、50000 步，每 2000 步保存最新断点并生成 4K 验证图。数据量自动统计，使用 PiD 官方多分辨率桶，图像及文本不预缓存。显存优化可选，目标 H800 配置的完整训练峰值尚未实测。
+
+## PixelDiT-T2I / QDM Halo2 等已有实验
+
+QDM Halo2 分支名为 `QDM-Halo2`。下文保留已有实验的入口和说明。
+
 
 FLUX.3 的[8卡四组双卡实验及28层合并联合训练](flux3/docs/parallel-pairs.md)入口也已提供，使用现有50K数据及其20K子集。
 

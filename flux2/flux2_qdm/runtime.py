@@ -42,6 +42,13 @@ from functools import lru_cache
 
 @lru_cache(maxsize=16)
 def sigma_table(root,length):
+    import os
+    if os.environ.get('FLUX2_BACKEND')=='diffsynth':
+        from .diffsynth_model import import_framework
+        import_framework()
+        from diffsynth.diffusion import FlowMatchScheduler
+        scheduler=FlowMatchScheduler('FLUX.2');scheduler.set_timesteps(1000)
+        return scheduler.sigmas
     from diffusers import FlowMatchEulerDiscreteScheduler
     from diffusers.pipelines.flux2.pipeline_flux2_klein import compute_empirical_mu
     scheduler=FlowMatchEulerDiscreteScheduler.from_pretrained(root,subfolder='scheduler',local_files_only=True)
@@ -51,8 +58,6 @@ def sigma_table(root,length):
 
 def training_inputs(samples,seed,stage,cursor,device,caption_dropout=0.,empty_prompt=None):
     from types import SimpleNamespace
-    from diffusers import FlowMatchEulerDiscreteScheduler
-    from diffusers.pipelines.flux2.pipeline_flux2_klein import compute_empirical_mu
     import os
     root=os.environ['FLUX2_WEIGHTS_ROOT']
     items=[];targets=[];mask=[]

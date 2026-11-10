@@ -12,15 +12,15 @@ class GlobalSampler:
         self.buckets = {str(k): list(v) for k,v in buckets.items() if len(v)}
         self.batch_size, self.world_size, self.accumulation, self.seed = batch_size, world_size, accumulation, seed
         self.effective = batch_size * world_size * accumulation
-        if not self.buckets or min(map(len,self.buckets.values())) < self.effective:
-            raise ValueError('Every nonempty resolution bucket must contain at least one global batch')
+        if not self.buckets or min(batch_size, world_size, accumulation) < 1:
+            raise ValueError('Need a nonempty dataset and positive batch, GPU count and accumulation')
 
     def global_batch(self, cursor):
         rng=np.random.default_rng(np.random.SeedSequence([self.seed,int(cursor)]))
         groups=list(self.buckets.values())
         counts=np.array([len(v) for v in groups],dtype=np.float64)
         group=groups[rng.choice(len(groups),p=counts/counts.sum())]
-        return rng.choice(group,size=self.effective,replace=False).tolist()
+        return rng.choice(group,size=self.effective,replace=len(group)<self.effective).tolist()
 
     def rank_batch(self,cursor,rank,micro=0):
         start=(micro*self.world_size+rank)*self.batch_size

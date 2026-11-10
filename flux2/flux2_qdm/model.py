@@ -63,7 +63,7 @@ def attention_projection(layer,x,hidden,teacher=False):
 
 @contextmanager
 def disable_lora(module):
-    adapters=[m for m in module.modules() if isinstance(m,SliceLoRA)]
+    adapters=[m for m in module.modules() if isinstance(m,SliceLoRA) or getattr(m,'_is_projection_update',False)]
     previous=[m.adapters_enabled for m in adapters]
     for m in adapters:m.adapters_enabled=False
     try:yield

@@ -1,0 +1,28 @@
+{
+  "family": "flux3",
+  "weights": "/data/models/flux-3-image-klein-base/model.safetensors",
+  "resources": "/data/models",
+  "subset_root": "/data/pid-vdn-80k",
+  "output": "outputs/flux3-kda-4k",
+  "data_mode": "online",
+  "max_resolution": 4096,
+  "gpus": 8,
+  "batch_size": 4,
+  "grad_accum": 1,
+  "steps": 50000,
+  "save_every": 2000,
+  "seed": 42,
+  "kernel": 11,
+  "shard_optimizer": false,
+  "gradient_checkpointing": false,
+  "activation_cpu_offload": false,
+  "optimizer_cpu_offload": false,
+  "distributed_timeout_minutes": 60,
+  "validation": {
+    "size": 4096,
+    "steps": 20,
+    "cfg": 3.5,
+    "seed": 0,
+    "prompt": "A red double-decker bus on a rainy London street, reflections on wet asphalt"
+  }
+}

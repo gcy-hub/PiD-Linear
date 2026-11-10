@@ -18,6 +18,9 @@ from torch.utils.data import Dataset
 BUCKETS_2K = {'1,1': (2048, 2048), '4,3': (2304, 1728), '3,4': (1728, 2304),
               '16,9': (2688, 1536), '9,16': (1536, 2688),
               '3,2': (2688, 1792), '2,3': (1792, 2688)}
+BUCKETS_1K = {'1,1': (1024,1024), '4,3': (1152,864), '3,4': (864,1152),
+              '16,9': (1344,768), '9,16': (768,1344),
+              '3,2': (1248,832), '2,3': (832,1248)}
 CACHE_SCHEMA = 1
 TEXT_PREPROCESS = {'schema': 1, 'native': 'Flux3Unit_PromptEmbedder', 'layers': [4,8,12,16,20,24,28,32],
                    'max_length': 4096, 'pad_multiple': 80, 'channels': 20480, 'dtype': 'bfloat16'}
@@ -224,7 +227,7 @@ class CacheStore:
 
 
 class CachedDataset(Dataset):
-    def __init__(self, subset_root, cache_root, subset_size, limit=0):
+    def __init__(self, subset_root, cache_root, subset_size, limit=0, image_buckets=None):
         self.rows = load_records(subset_root, subset_size)
         if limit:
             self.rows = self.rows[:limit]
@@ -237,7 +240,10 @@ class CachedDataset(Dataset):
             raise RuntimeError('Cache manifest fingerprint is corrupt; rerun preparation')
         if manifest.get('schema') != CACHE_SCHEMA or manifest.get('source_signature') != source_signature(subset_root, subset_size):
             raise RuntimeError('Cache source fingerprint is stale; rerun preparation with --resume')
-        if manifest.get('text_preprocess') != json.loads(json.dumps(TEXT_PREPROCESS)) or manifest.get('image_preprocess') != json.loads(json.dumps(IMAGE_PREPROCESS)):
+        image_preprocess = dict(IMAGE_PREPROCESS)
+        if image_buckets is not None:
+            image_preprocess['buckets'] = image_buckets
+        if manifest.get('text_preprocess') != json.loads(json.dumps(TEXT_PREPROCESS)) or manifest.get('image_preprocess') != json.loads(json.dumps(image_preprocess)):
             raise RuntimeError('Cache preprocessing fingerprint is stale; rerun preparation')
         resources = manifest.get('resources')
         if resources:

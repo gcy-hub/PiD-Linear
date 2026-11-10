@@ -148,6 +148,10 @@ class CachedDataset:
 
     def __getitem__(self,index):
         row=self.rows[index]
+        if self.manifest.get('format')=='clear-diffsynth':
+            from .native_cache import load_sample
+            if file_identity(row['image_path'])!=row['source']:raise ValueError('Source image changed')
+            return load_sample(self.manifest,row)
         if file_identity(row['image_path'])!=row['source']:raise ValueError(f'Source image changed: {row["id"]}')
         for kind,key in [('image',row['id']),('text',row['caption'])]:
             if not valid(cache_path(self.root,kind,key),cache_identity(self.manifest,kind)):raise RuntimeError(f'Missing/stale native FLUX.2 {kind} cache for {row["id"]}')

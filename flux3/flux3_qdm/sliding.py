@@ -1,4 +1,7 @@
-"""Centered, clipped 2D sliding image attention with jointly normalized text.
+"""Clipped 2D sliding image attention with jointly normalized text.
+
+Each axis uses offsets [-floor(kernel/2), floor((kernel-1)/2)]. Odd kernels
+are centered; even kernels include one extra position above/left.
 
 CUDA uses PyTorch FlexAttention, including its backward. No unfold, copied
 per-query K/V neighborhoods, or dense N*N CUDA mask is materialized. CPU SDPA
@@ -8,6 +11,12 @@ from functools import lru_cache
 
 import torch
 from torch.nn import functional as F
+
+# Configure before entering non-reentrant checkpoint: setting this inside its
+# forward is restored on exit, before the lazy backward compiler runs.
+torch._dynamo.config.specialize_int = True
+torch._dynamo.config.recompile_limit = max(torch._dynamo.config.recompile_limit, 4096)
+torch._dynamo.config.accumulated_recompile_limit = max(torch._dynamo.config.accumulated_recompile_limit, 8192)
 
 
 def validate_local_attention(saved, current):
@@ -22,11 +31,21 @@ def validate_local_attention(saved, current):
 
 def _predicate(height, width, text, kernel):
     image = height*width
-    length = image+text
-    radius = kernel//2
+    if kernel % 2:
+        radius = kernel//2
+        def centered(b, head, query, key):
+            local = ((query//width-key//width).abs() <= radius) & ((query%width-key%width).abs() <= radius)
+            return (query >= image) | (key >= image) | local
+        return centered
+    # Preserve the original centered predicate for odd windows.
+    left, right = kernel//2, (kernel-1)//2
     def allowed(b, head, query, key):
-        local = ((query//width-key//width).abs() <= radius) & ((query%width-key%width).abs() <= radius)
-        return (query < length) & (key < length) & ((query >= image) | (key >= image) | local)
+        dy, dx = key//width-query//width, key%width-query%width
+        # Keep captured scalar bounds nonnegative: torch 2.10 Flex lowering
+        # cannot realize a negated symbolic closure scalar as a typed buffer.
+        local = (dy + left >= 0) & (dy <= right) & (dx + left >= 0) & (dx <= right)
+        # FlexAttention separately masks against the actual Q/K tensor lengths.
+        return (query >= image) | (key >= image) | local
     return allowed
 
 
@@ -40,18 +59,31 @@ def _block_mask(height, width, text, kernel, device):
 
 @lru_cache(maxsize=1)
 def _compiled_attention():
-    from torch.nn.attention.flex_attention import flex_attention
+    from torch.nn.attention.flex_attention import BlockMask, flex_attention
     # Text lengths and 2K aspect buckets vary. Static specialization hits the
     # default recompilation limit and silently falls back to dense eager math.
     # Fullgraph rejects such fallback instead of risking an N*N allocation.
-    return torch.compile(flex_attention, dynamic=True, fullgraph=True)
+    # On torch 2.10, symbolic integer geometry can yield incorrect dK/dV when
+    # reusing backward across layouts. This must remain active during lazy
+    # backward compilation as well as forward, so it cannot be a forward-only
+    # config context. Tensor sequence lengths below remain dynamic.
+    def attend(q, k, v, block_mask, kernel_options):
+        current = BlockMask(
+            seq_lengths=(q.shape[-2], k.shape[-2]),
+            kv_num_blocks=block_mask.kv_num_blocks, kv_indices=block_mask.kv_indices,
+            full_kv_num_blocks=block_mask.full_kv_num_blocks, full_kv_indices=block_mask.full_kv_indices,
+            q_num_blocks=block_mask.q_num_blocks, q_indices=block_mask.q_indices,
+            full_q_num_blocks=block_mask.full_q_num_blocks, full_q_indices=block_mask.full_q_indices,
+            BLOCK_SIZE=block_mask.BLOCK_SIZE, mask_mod=block_mask.mask_mod)
+        return flex_attention(q, k, v, block_mask=current, kernel_options=kernel_options)
+    return torch.compile(attend, dynamic=True, fullgraph=True)
 
 
 def sliding_joint_attention(q, k, v, grid, text_length, kernel_size=11):
     """[1,heads,H*W+text,dim], image-first; invoke separately for each sample."""
     height, width = map(int, grid)
-    if min(height, width, kernel_size) < 1 or kernel_size%2 != 1 or text_length < 0:
-        raise ValueError('Sliding needs a valid explicit grid and positive odd kernel')
+    if min(height, width, kernel_size) < 1 or text_length < 0:
+        raise ValueError('Sliding needs a valid explicit grid and positive kernel')
     length = height*width+text_length
     if q.ndim != 4 or q.shape != k.shape or q.shape != v.shape or q.shape[0] != 1 or q.shape[2] != length:
         raise ValueError('Sliding Q/K/V must be one image-first sample with matching dimensions')
