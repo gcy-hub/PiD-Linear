@@ -1,3 +1,9 @@
 data:
+  manifest: null
   buckets: official
-cache: {image: false, text: false}
+  min_size: 256
+  workers: 0
+cache:
+  image: false
+  text: false
+  root: null
