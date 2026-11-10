@@ -2,7 +2,7 @@
 
 代码仓库：`/home/ganchangyi/code/PiD-Linear`。
 
-实验根目录：`/home/ganchangyi/experiment/PiD-Linear`。每个实验使用独立子目录保存权重、优化器状态、验证图片、日志和运行配置。仓库内的 `outputs` 符号链接指向这个目录；新配置直接使用实验目录的绝对路径。
+实验根目录：`/home/ganchangyi/code/experiment`。每个实验使用独立子目录保存权重、优化器状态、验证图片、日志和运行配置。仓库内的 `outputs` 符号链接指向这个目录；新配置直接使用实验目录的绝对路径。
 
 Git 只有一个工作目录。当前主线为 `main`，其他版本保留在分支或归档引用中。运行训练或验证期间不要切换分支。
 

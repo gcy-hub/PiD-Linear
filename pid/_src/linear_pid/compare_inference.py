@@ -25,8 +25,8 @@ from pid._src.linear_pid.data import atomic_json, sha256_file
 from pid._src.linear_pid.evaluation import asset_cases, benchmark_step, save_png, tensor_image
 from pid._src.linear_pid.runtime import build_net, load_original, sample
 
-GALLERY_ROOT = "/home/ganchangyi/experiment/PiD-Linear/linear-pid/assets"
-OUTPUT_ROOT = "/home/ganchangyi/experiment/PiD-Linear/inference_comparison"
+GALLERY_ROOT = "/home/ganchangyi/code/experiment/linear-pid/assets"
+OUTPUT_ROOT = "/home/ganchangyi/code/experiment/inference_comparison"
 ASSET_KEYS = ("latent", "caption_embs", "caption_mask", "null_embs", "null_mask")
 
 

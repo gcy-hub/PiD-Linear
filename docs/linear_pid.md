@@ -2,7 +2,7 @@
 
 第一阶段从完整 PiD v1.5 FLUX undistilled 加载所有权重，然后将 MMDiT 的 `[1,4,8,12]` 直接替换为随机初始化的 KDA。保留两层 PiT；像素主干参与恢复训练，FLUX latent 适配器及其注入门冻结。默认 `--lambda-out 0`，只用 FM loss，不创建训练教师或执行教师前向。学生使用离线 Gemma 文本条件和冻结 FLUX VAE。显式设置正的 `--lambda-out` 才加载原始 PiD 教师，共享条件编码器。训练入口复用 `scripts.train` 的分派，不进入 DMD 训练流程。
 
-训练输出默认位于 `/home/ganchangyi/experiment/PiD-Linear/linear-pid`，日志、画廊和训练 checkpoint 均在仓库的 `outputs/` 下，已由 `.gitignore` 排除。原始模型权重、数据索引、文本缓存和环境仍使用原有本地目录。以下命令是完整工作负载；代码不会自动提交 Slurm，也不会根据 loss 自动增加替换层数。
+训练输出默认位于 `/home/ganchangyi/code/experiment/linear-pid`，日志、画廊和训练 checkpoint 均在仓库的 `outputs/` 下，已由 `.gitignore` 排除。原始模型权重、数据索引、文本缓存和环境仍使用原有本地目录。以下命令是完整工作负载；代码不会自动提交 Slurm，也不会根据 loss 自动增加替换层数。
 
 2026-10-05 按用户要求，原四层 node01 训练在 step 2833 保存退出，自动续跑已停用，八卡 job `116623` 已取消。此前 `experiments/linear-pid*` 输出整体移动到当前仓库的 `outputs/`，旧路径仅保留兼容符号链接。随后四层到十层的渐进扩层对照也已在 total step 3041 / stage step 208 保存退出，并停用其 cron。当前主实验从原始 PiD 直接随机初始化全部十层 KDA，所有训练计数从 0 开始，新 optimizer、warmup 500。先使用物理卡 `1,2,3`、每卡 batch 4、累积 1；step 500 后因物理 1 卡其他进程占用显存而 OOM，改用两卡 `2,3`、每卡 batch 3 / 累积 2，完成两次更新并保存 step 502。0 卡空闲后改为 `0,2,3`，从完整 step 502 继续，每卡 batch 4、累积 1。随后其他进程再次占用显存而 OOM，最新完整断点为 step 591；随后使用 `0,1` 至 step 652。该配置恢复时因其他进程占用显存而 OOM，检查四卡余量后曾使用 `2,3` 从 step 652 恢复，每卡 batch 3、累积 2，训练至 step 777。随后四卡全部空闲，曾使用 `0,1,2,3` 从完整 step 777 断点继续，每卡 batch 3、累积 1、有效 batch 12。在 step 798 保存退出后，按用户要求改为四卡每卡 batch 4、累积 1、有效 batch **16**；通过完整状态续跑保留模型、optimizer、scheduler 和累计步数，新的独立输出为 `outputs/linear-pid-kda10-direct/node01-bs4/`。bs4 那次运行没有发布新的完整断点；按用户最新要求，现已停用 bs4 目录的 cron，回到原 `node01` 目录从完整 step 798 继续，四卡每卡 batch 3、累积 1、有效 batch 12。当前目录 cron 每分钟检查，每轮训练进程上限 28 分钟。配置与完整运行命令见 [十层直接初始化](linear_pid_kda10_direct.md)；旧 [渐进扩层阶段](linear_pid_kda10.md) 保留作对照。
 
@@ -14,7 +14,7 @@
 
 2026-10-04 已完成 1,008 个元数据分片的正式全量索引：998,694 条训练样本、1,024 条固定验证样本。用户同意先检查图片头、尺寸与 caption，把完整解码检查放在训练读取图片时执行；候选中已有 143,993 条经过完整解码检查。准备使用 16 个单线程 worker，全部完成后已退出。剔除原因包括缺少字段 7,314 条、Pillow 超大图片限制 175 条、空英文 caption 8 条、尺寸不足 15 条；具体明细见索引的 `shards/*.rejected.jsonl`。
 
-全部 112 份固定验证条件已发布（64 个真实 2K、32 个生成 2K、两类各 8 个 4K）。已在 node01 启动 0、3 卡的正式训练：每卡 batch 4、累积 1、有效 batch 8、PiT chunk 2048、FM-only、无 EMA／模型卸载，完整数据索引及默认固定画廊均启用。训练根目录为 `/home/ganchangyi/experiment/PiD-Linear/linear-pid`，每次运行在 28 分钟到时后保存退出，手动重复命令恢复；实际更新与结果以该目录日志及 checkpoint 为准。
+全部 112 份固定验证条件已发布（64 个真实 2K、32 个生成 2K、两类各 8 个 4K）。已在 node01 启动 0、3 卡的正式训练：每卡 batch 4、累积 1、有效 batch 8、PiT chunk 2048、FM-only、无 EMA／模型卸载，完整数据索引及默认固定画廊均启用。训练根目录为 `/home/ganchangyi/code/experiment/linear-pid`，每次运行在 28 分钟到时后保存退出，手动重复命令恢复；实际更新与结果以该目录日志及 checkpoint 为准。
 
 正式启动完成 step 0 的 16 张验证图后，发现推理模式创建的 RoPE 缓存不能被训练反向使用。训练内的画廊与网络测速现已使用 `no_grad`，保留普通无梯度缓存；新增“画廊后 checkpointed 训练”回归测试，核对完整小型学生的输出与参数梯度。
 
@@ -101,7 +101,7 @@ bash scripts/train_linear_pid.sh \
   --preset 4gpu --layers 4 --lambda-out 0 \
   --batch-size 4 --grad-accum 2 --pit-chunk-size 2048 --workers 4 --threads 1 \
   --index-root /home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_test_index \
-  --output-root /home/ganchangyi/experiment/PiD-Linear/linear-pid-bs4-single-test/run \
+  --output-root /home/ganchangyi/code/experiment/linear-pid-bs4-single-test/run \
   --resume auto --max-steps 3 --max-seconds 1200 \
   --log-steps 1 --quick-every 0 --full-every 0
 ```
@@ -214,7 +214,7 @@ cd /home/ganchangyi/code/PiD-Linear
 GPU_IDS=0,1,2,3 CPU_THREADS=1 \
 bash scripts/prepare_linear_pid_assets.sh \
   --index-root /home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_index \
-  --output-root /home/ganchangyi/experiment/PiD-Linear/linear-pid/assets
+  --output-root /home/ganchangyi/code/experiment/linear-pid/assets
 ```
 
 建立 64 个真实图像条件、32 个 Z-Image-Turbo 条件及两类各 8 个 4K 条件，共 112 个资产。真实样本来自固定验证集，按长宽比轮换；4K 样本是其中具有足够原生尺寸的子集。生成提示词固定，覆盖人物、自然、建筑、纹理、颜色、多物体和空间关系；生成 latent 分别来自 512 与 1024 输出，使用 Turbo 的 9 步和 CFG 0。
@@ -264,9 +264,9 @@ watcher 每分钟由系统 cron 启动短进程，避免常驻 Python supervisor
 conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
 python scripts/watch_linear_pid_training.py \
-  --run-dir /home/ganchangyi/experiment/PiD-Linear/linear-pid/kda_1-4-8-12 --status
+  --run-dir /home/ganchangyi/code/experiment/linear-pid/kda_1-4-8-12 --status
 python scripts/watch_linear_pid_training.py \
-  --run-dir /home/ganchangyi/experiment/PiD-Linear/linear-pid/kda_1-4-8-12 --uninstall
+  --run-dir /home/ganchangyi/code/experiment/linear-pid/kda_1-4-8-12 --uninstall
 ```
 
 要求当前训练在更新边界保存退出并阻止续跑时，创建运行目录的 `STOP` 文件；恢复前删除该文件，再安装 watcher。自动训练日志在运行目录的 `watch_logs`，用户 crontab 中只修改带本实验唯一 marker 的条目，保留其他任务。
@@ -315,14 +315,14 @@ conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
 GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/train_linear_pid.sh \
   --preset 4gpu --layers 4 --lambda-out 1 --resume auto \
-  --output-root /home/ganchangyi/experiment/PiD-Linear/linear-pid-with-teacher
+  --output-root /home/ganchangyi/code/experiment/linear-pid-with-teacher
 ```
 
 同阶段恢复严格检查 `lambda_out`，不会把原带教师 checkpoint 静默改为无教师训练；恢复原实验需显式保留 `--lambda-out 1`。若有意切换目标，应在新输出目录用 `--init-from <checkpoint> --init-weights raw --resume none` 开启新阶段，此时 optimizer 和 warmup 会重建。
 
 训练计算及画廊生成均保持模型权重在 GPU，启用教师时条件 embedding 由师生共享。默认 `--text-cache-root /home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_text_cache`，各 DataLoader worker 使用有界 mmap 读取 BF16 条件，训练端保持原 caption dropout，并使用独立的空 caption 缓存。离线文本条件使每卡无需保存约 4.87 GiB 的 Gemma 权重；`--online-text` 切回 GPU 编码。关闭 EMA 可省去每步 GPU→CPU 权重复制和 CPU 平均计算，以及约 5.23 GiB 的 CPU 副本；此前 EMA 本来就不占 GPU 显存，因此取消 EMA 不会释放同等大小的显存。checkpoint 保存仍将状态复制到 CPU 后序列化，保留 GPU 上的训练模型。
 
-输出目录：`/home/ganchangyi/experiment/PiD-Linear/linear-pid/kda_1-4-8-12`。快速画廊在 stage step 0、100、500 及之后每 1,000 更新生成，两类各 8 张；完整 2K 画廊每 5,000 更新生成 96 张。生成使用当前学生、25 步、CFG 5、shift 6、batch 1，保存整图和三个统一局部裁剪，目录为 `galleries/step_<total>_raw`。无教师训练不会为画廊加载原模型；已有原 checkpoint 参考缓存时生成师生并排预览，否则只保存学生。参考输出可通过第 7 节的独立评估命令生成，按资产和采样设置缓存。
+输出目录：`/home/ganchangyi/code/experiment/linear-pid/kda_1-4-8-12`。快速画廊在 stage step 0、100、500 及之后每 1,000 更新生成，两类各 8 张；完整 2K 画廊每 5,000 更新生成 96 张。生成使用当前学生、25 步、CFG 5、shift 6、batch 1，保存整图和三个统一局部裁剪，目录为 `galleries/step_<total>_raw`。无教师训练不会为画廊加载原模型；已有原 checkpoint 参考缓存时生成师生并排预览，否则只保存学生。参考输出可通过第 7 节的独立评估命令生成，按资产和采样设置缓存。
 
 SwanLab 与 `metrics.jsonl` 记录 FM／输出 MSE、LR、梯度范数、样本数、耗时、吞吐、显存、教师／学生耗时以及 KDA 输出尺度与门统计。无教师时输出 MSE 和教师耗时记为 0，表示关闭，而非测得教师误差为零。不能用 loss 下降代替检查图像。
 
@@ -330,13 +330,13 @@ SwanLab 与 `metrics.jsonl` 记录 FM／输出 MSE、LR、梯度范数、样本�
 
 ## 5. 双节点 8 卡
 
-只在你明确要求时提交。Slurm 默认使用独立的 `/home/ganchangyi/experiment/PiD-Linear/linear-pid-slurm/job-<jobid>`，不会与 node01 的训练共用输出目录。提交前创建日志父目录；以下命令在拿到资源时复制 node01 最新完整断点，并恢复学生、optimizer、scheduler 和数据进度：
+只在你明确要求时提交。Slurm 默认使用独立的 `/home/ganchangyi/code/experiment/linear-pid-slurm/job-<jobid>`，不会与 node01 的训练共用输出目录。提交前创建日志父目录；以下命令在拿到资源时复制 node01 最新完整断点，并恢复学生、optimizer、scheduler 和数据进度：
 
 ```bash
 conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
-mkdir -p /home/ganchangyi/experiment/PiD-Linear/linear-pid-slurm
-LINEAR_PID_SOURCE_RUN_DIR=/home/ganchangyi/experiment/PiD-Linear/linear-pid/kda_1-4-8-12 \
+mkdir -p /home/ganchangyi/code/experiment/linear-pid-slurm
+LINEAR_PID_SOURCE_RUN_DIR=/home/ganchangyi/code/experiment/linear-pid/kda_1-4-8-12 \
 LINEAR_PID_BATCH_SIZE=4 LINEAR_PID_GRAD_ACCUM=1 LINEAR_PID_EFFECTIVE_BATCH=32 \
 sbatch scripts/train_linear_pid_8gpu.slurm
 ```
@@ -371,13 +371,13 @@ bash scripts/train_linear_pid.sh --preset 8gpu --layers 4 --resume auto
 要求正常保存退出时，在另一个终端执行：
 
 ```bash
-touch /home/ganchangyi/experiment/PiD-Linear/linear-pid/kda_1-4-8-12/STOP
+touch /home/ganchangyi/code/experiment/linear-pid/kda_1-4-8-12/STOP
 ```
 
 准备继续前删除该停止标记，再重跑训练命令：
 
 ```bash
-rm -f /home/ganchangyi/experiment/PiD-Linear/linear-pid/kda_1-4-8-12/STOP
+rm -f /home/ganchangyi/code/experiment/linear-pid/kda_1-4-8-12/STOP
 conda activate linear-pid
 GPU_IDS=0,1,2,3 bash scripts/train_linear_pid.sh --preset 4gpu --layers 4 --resume auto
 ```
@@ -436,7 +436,7 @@ GPU_IDS=0,1,2,3 bash scripts/evaluate_linear_pid.sh \
 conda activate linear-pid
 python -m pid._src.linear_pid.evaluation \
   --checkpoint /absolute/path/to/checkpoint \
-  --export /home/ganchangyi/experiment/PiD-Linear/linear-pid/student_raw.pt
+  --export /home/ganchangyi/code/experiment/linear-pid/student_raw.pt
 ```
 
 导出仅包含学生、重建配置和必要元数据。评估、导出和独立采样默认 `--weights raw`；只有读取含 EMA 的旧 checkpoint 时，才可显式使用 `--weights ema`。新 checkpoint 指定 EMA 会报错，不会静默改用另一份权重。使用已有 normalized FLUX latent 独立采样，或使用 `--image /absolute/path/image.jpg --resolution 4096` 从本地图片构造条件：
@@ -444,10 +444,10 @@ python -m pid._src.linear_pid.evaluation \
 ```bash
 conda activate linear-pid
 CUDA_VISIBLE_DEVICES=0 python scripts/sample_linear_pid.py \
-  --checkpoint /home/ganchangyi/experiment/PiD-Linear/linear-pid/student_raw.pt \
+  --checkpoint /home/ganchangyi/code/experiment/linear-pid/student_raw.pt \
   --latent /absolute/path/to/normalized_flux_latent.pt \
   --caption 'A red fox standing in snowy woodland at sunrise.' \
-  --output /home/ganchangyi/experiment/PiD-Linear/linear-pid/samples/fox.png \
+  --output /home/ganchangyi/code/experiment/linear-pid/samples/fox.png \
   --steps 25 --cfg 5 --shift 6 --seed 42
 ```
 
@@ -462,7 +462,7 @@ conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
 GPU_IDS=0,1,2,3 bash scripts/train_linear_pid.sh \
   --preset 4gpu --layers 4 --resume auto --max-steps 20 \
-  --output-root /home/ganchangyi/experiment/PiD-Linear/linear-pid/startup-verification \
+  --output-root /home/ganchangyi/code/experiment/linear-pid/startup-verification \
   --quick-every 0 --full-every 0 --save-steps 10 --log-steps 1
 ```
 
@@ -477,13 +477,13 @@ GPU_IDS=0,1 CPU_THREADS=1 bash scripts/train_linear_pid.sh \
   --preset 4gpu --layers 4 --grad-accum 4 --workers 2 \
   --max-steps 2 --quick-every 0 --full-every 0 \
   --save-steps 1 --log-steps 1 --resume auto \
-  --output-root /home/ganchangyi/experiment/PiD-Linear/linear-pid/two-gpu-verification
+  --output-root /home/ganchangyi/code/experiment/linear-pid/two-gpu-verification
 ```
 
 将 `--max-steps 2` 改为 `3` 重跑以验证恢复。退出并完成检查后，删除此专用测试目录：
 
 ```bash
-rm -r -- /home/ganchangyi/experiment/PiD-Linear/linear-pid/two-gpu-verification
+rm -r -- /home/ganchangyi/code/experiment/linear-pid/two-gpu-verification
 ```
 
 若出现 OOM，先检查实现和显存策略，不自动冻结主干、减少层数或改变有效 batch。A40 上是否能容纳完整恢复训练、生成质量与实际加速幅度，都由这些运行结果确认。

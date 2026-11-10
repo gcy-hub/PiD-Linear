@@ -252,7 +252,7 @@ def install_config(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir")
-    parser.add_argument("--output-root", default="/home/ganchangyi/experiment/PiD-Linear/linear-pid")
+    parser.add_argument("--output-root", default="/home/ganchangyi/code/experiment/linear-pid")
     parser.add_argument("--layers", default="4")
     parser.add_argument("--stage-config", help="Use JSON original-PiD/parent initialization and later resumes")
     parser.add_argument("--source-run-dir", help="Override the stage JSON's parent run")

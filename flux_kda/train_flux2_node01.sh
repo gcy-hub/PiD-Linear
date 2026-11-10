@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 export PYTHONPATH="$PWD:$PWD/flux2:$PWD/flux3"
 export OMP_NUM_THREADS=4
 PYTHON=/home/ganchangyi/software/miniconda3/envs/flux3-qdm/bin/python
-OUTPUT="${1:-/home/ganchangyi/experiment/PiD-Linear/flux2-stock-kda-clear-node01-bs2}"
+OUTPUT="${1:-/home/ganchangyi/code/experiment/flux2-stock-kda-clear-node01-bs2}"
 WEIGHTS=/home/ganchangyi/huggingface_ckpts/FLUX.2-klein-base-4B
 DATA=/home/ganchangyi/dataset/CLEAR-FLUX2-klein-base-4B-10K
 mkdir -p "$OUTPUT"
