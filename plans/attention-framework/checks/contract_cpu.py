@@ -31,7 +31,7 @@ def main():
         assert cfg.feature_tap == ('post_o' if 'qdm' in a else 'pre_o')
     for overrides in (['training.typo=1'], ['replacement.layers.joint=[28]'],
                       ['algorithm.local.window_size=4'], ['cache.image=true'],
-                      ['cache.text=1'], ['training.batch_size=0'],
+                      ['cache.text=1'], ['training.batch_size=0'], ['runtime.dtype=float16'],
                       ['replacement.feature_layers=[joint.40]']):
         try:
             config(overrides=overrides)

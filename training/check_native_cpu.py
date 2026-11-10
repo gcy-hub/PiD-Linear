@@ -68,7 +68,7 @@ def main():
     from pid._src.networks.pid_net import PidNet
     torch.set_num_threads(1)
     dropout()
-    for dtype, strategy in [('float32', 'vdn'), ('bfloat16', 'vdn'), ('float16', 'vdn'), ('bfloat16', 'clear')]:
+    for dtype, strategy in [('float32', 'vdn'), ('bfloat16', 'vdn'), ('bfloat16', 'clear')]:
         with tempfile.TemporaryDirectory() as root:
             cfg = config(root, dtype, strategy)
             built = []
@@ -97,8 +97,7 @@ def main():
                     assert state['progress']['stage'] == stage
                     grads = [r.parameter.grad for r in built[-1].role_parameters() if r.parameter.grad is not None]
                     assert grads and all(torch.isfinite(g).all() for g in grads)
-                    if dtype != 'float16' or stage == 'a1':
-                        assert any(g.count_nonzero() for g in grads)
+                    assert any(g.count_nonzero() for g in grads)
                     assert all(torch.isfinite(v).all() for v in state['weights'].values())
             print(f'PASS: real small PiD {dtype} engine {strategy}, accumulation, finite gradients, checkpoint transitions')
 

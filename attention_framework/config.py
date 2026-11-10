@@ -88,8 +88,8 @@ def validate_config(cfg: DictConfig) -> None:
             raise ValueError('Cache switches must be booleans')
     if (cfg.cache.image or cfg.cache.text) and not cfg.cache.root:
         raise ValueError('Enabled cache requires cache.root')
-    if cfg.runtime.dtype not in ('float32', 'float16', 'bfloat16'):
-        raise ValueError('Unsupported runtime dtype')
+    if cfg.runtime.dtype not in ('float32', 'bfloat16'):
+        raise ValueError('Training requires float32 or bfloat16; float16 requires loss scaling')
 
 
 def config_parser() -> argparse.ArgumentParser:
