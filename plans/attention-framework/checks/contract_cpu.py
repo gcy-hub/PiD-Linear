@@ -46,6 +46,9 @@ def main():
             pass
         else:
             raise AssertionError('CLEAR+VDN accepted')
+    downloaded = config(overrides=['model.downloads.vae.repo_id=example/model',
+                                   'model.downloads.vae.revision=fixed'])
+    assert downloaded.model.downloads.vae.repo_id == 'example/model'
     cfg = config(overrides=['training.batch_size=4', 'training.accumulation=2', 'runtime.gpus=3',
                             'replacement.layers.early_image=[]', 'replacement.layers.joint=[4,8]'])
     assert cfg.global_batch_size == 24 and list(cfg.selected_layers) == ['joint.4', 'joint.8']

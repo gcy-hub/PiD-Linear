@@ -141,6 +141,8 @@ exclude = ["tests*", "docs*", "examples*"]
 # Include all Python files and other required files
 pid = ["py.typed", "**/*.py"]
 configs = ["**/*.yaml", "default.yaml"]
+models = ["vendor/DiffSynth-Studio/**/*"]
+algorithms = ["vendor/LICENSE", "vendor/CLEAR-LICENSE", "vendor/SOURCES.md"]
 
 # Ruff configuration - all-in-one Python tool (replaces black, isort, flake8, etc.)
 [tool.ruff]

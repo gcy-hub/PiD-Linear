@@ -23,6 +23,7 @@ def compose_config(model_config: str, algorithm_config: str, training_config: st
     cfg.model.layer_counts = model.model.layer_counts
     cfg.replacement.layers = model.replacement.layers
     OmegaConf.set_struct(cfg, True)
+    OmegaConf.set_struct(cfg.model.downloads, False)
     cfg = OmegaConf.merge(cfg, model, OmegaConf.load(algorithm_config),
                           OmegaConf.load(training_config), OmegaConf.load(data_config),
                           OmegaConf.from_dotlist(overrides or []))

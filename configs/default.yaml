@@ -2,6 +2,7 @@ model:
   family: flux3
   architecture: native
   resources: {weights: null, text_encoder: null, tokenizer: null, vae: null}
+  downloads: {}
   layer_counts: {early_image: 5, joint: 28}
 replacement:
   layers: {early_image: all, joint: all}

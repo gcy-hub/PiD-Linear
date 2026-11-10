@@ -5,7 +5,8 @@ from omegaconf import OmegaConf
 
 
 def download_resources(model_config, *, components=None, workers=4):
-    config = OmegaConf.load(model_config)
+    from attention_framework.config import CONFIG_ROOT
+    config = OmegaConf.merge(OmegaConf.load(CONFIG_ROOT / 'default.yaml'), OmegaConf.load(model_config))
     resources = config.model.resources
     names = list(resources) if components is None else list(dict.fromkeys(components))
     unknown = set(names) - set(resources)
