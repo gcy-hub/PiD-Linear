@@ -88,14 +88,20 @@ class NativeModel(nn.Module):
         inputs = dict(batch.inputs)
         grids = inputs.pop('_grids')
         mask = inputs.pop('_text_mask', None)
-        if self.family == 'flux2' and mask is not None and not mask.bool().all():
+        if self.family == 'pid':
+            mask = inputs.pop('text_valid_mask', None)
+        if self.family in ('pid', 'flux2') and mask is not None and not mask.bool().all():
             outputs = []
             for i in range(len(batch.sample_ids)):
                 row = {k: (v[i:i+1] if v.ndim != 2 or k not in ('img_ids', 'txt_ids') else v)
                        if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
                 valid = mask[i].bool()
-                row['encoder_hidden_states'] = row['encoder_hidden_states'][:, valid]
-                row['txt_ids'] = row['txt_ids'][:, valid] if row['txt_ids'].ndim == 3 else row['txt_ids'][valid]
+                if self.family == 'pid':
+                    # Native PiD attention ignores text_valid_mask; trim for every layer.
+                    row['y'] = row['y'][:, valid]
+                else:
+                    row['encoder_hidden_states'] = row['encoder_hidden_states'][:, valid]
+                    row['txt_ids'] = row['txt_ids'][:, valid] if row['txt_ids'].ndim == 3 else row['txt_ids'][valid]
                 row['_grids'] = (grids[i],)
                 sample = TrainingBatch(row, batch.target[i:i+1], batch.timesteps[i:i+1], (batch.sample_ids[i],))
                 outputs.append(self._forward(sample, teacher=teacher, capture=capture, callback=callback))

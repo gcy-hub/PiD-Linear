@@ -45,7 +45,7 @@ class PidAttention(AttentionSite):
                 return torch.cat((a.proj_drop_y(a.proj_y(pre[:, :t])), a.proj_drop_x(a.proj_x(pre[:, t:]))), 1)
             post = self.attend(make_inputs(xx, yy), project)
             outputs_x.append(post[:, t:])
-            text = y[b:b+1].new_zeros(y[b:b+1].shape)
+            text = post.new_zeros(y[b:b+1].shape)
             text[:, valid[b]] = post[:, :t]
             outputs_y.append(text)
             if self.capture:

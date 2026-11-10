@@ -45,8 +45,12 @@ class Flux2Attention(AttentionSite):
                 qp, kp = [rotate(z, image_rotary_emb, sequence_dim=1) for z in (q, k)]
             return AttentionInput(hidden, q, k, v, qp, kp, layout, self.layer)
         self.student_inputs = lambda: make_inputs(hidden_states.detach(), None if encoder_hidden_states is None else encoder_hidden_states.detach())
+        attention_pre = None
         if self.single:
             def project(pre):
+                nonlocal attention_pre
+                if attention_pre is None:
+                    attention_pre = pre
                 return a.to_out.attention_output(pre)
         else:
             def project(pre):
@@ -55,6 +59,9 @@ class Flux2Attention(AttentionSite):
         if self.single:
             fused = a.to_qkv_mlp_proj(hidden_states)
             mlp = a.mlp_act_fn(fused[..., 3*a.inner_dim:])
+            if self.teacher:
+                # Preserve the native fused GEMM and its single BF16 rounding for the teacher trunk.
+                return a.to_out(torch.cat((attention_pre, mlp), -1))
             # O's attention columns were applied once above; retain frozen FFN columns/bias.
             return post + torch.nn.functional.linear(mlp, a.to_out.base.weight[:, a.inner_dim:], a.to_out.bias)
         return post[:, t:], post[:, :t]
