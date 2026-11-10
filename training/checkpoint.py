@@ -80,6 +80,9 @@ def restore(state, adapter, optimizer, scheduler, generator):
         for outer, inner in zip(optimizer.param_groups, local.param_groups):
             outer.update({k: v for k, v in inner.items() if k != 'params'})
     scheduler.load_state_dict(state['scheduler'])
+    # ZeRO's local groups retain the rate before the last scheduler step.
+    for group, lr in zip(optimizer.param_groups, scheduler.get_last_lr()):
+        group['lr'] = lr
     rng = state['rng']
     random.setstate(rng['python'])
     np.random.set_state(rng['numpy'])
