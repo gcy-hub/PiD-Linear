@@ -2,7 +2,7 @@
 
 2026-10-06 提交 job `116643`。使用 `students` account、`gpujl` partition，两节点各四张 GPU、每卡 batch 4、梯度累积 1，有效 batch 32。每节点一个 torchrun launcher，每 rank 四个数据 worker，计算线程 1。最长六天，提前 30 分钟保存退出。
 
-独立输出根目录：`/home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/2node-8gpu-bs4`。实际训练目录为其下的 `kda_0-1-2-4-5-6-8-9-10-12`，Slurm stdout 为根目录中的 `slurm-<jobid>.out`。node01 使用另一个输出根目录，当前训练不受影响。
+独立输出根目录：`/home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/2node-8gpu-bs4`。实际训练目录为其下的 `kda_0-1-2-4-5-6-8-9-10-12`，Slurm stdout 为根目录中的 `slurm-<jobid>.out`。node01 使用另一个输出根目录，当前训练不受影响。
 
 配置：`pid/_src/configs/linear_pid/kda10_direct_8gpu_bs4.json`。首次加载完整原始 PiD v1.5 权重，随机初始化全部十层 KDA，optimizer、scheduler、训练计数从零开始，不读取四层或 node01 学生 checkpoint。对应布局为 `K K K F K K K F K K K F K F`，两层 PiT 保留。已验证首次启动计划为 `initialize_original`，`resume=none`、`init_from` 和 `resume_from` 均为空。之后重复提交同一配置只恢复这个独立目录的完整 checkpoint。
 
@@ -17,8 +17,8 @@
 ```bash
 conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
-mkdir -p /home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/2node-8gpu-bs4
-sbatch --export=ALL,LINEAR_PID_STAGE_OUTPUT_ROOT=/home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/2node-8gpu-bs4,REPO_ROOT=/home/ganchangyi/code/PiD-Linear,LINEAR_PID_ENV=linear-pid,CPU_THREADS=1 \
+mkdir -p /home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/2node-8gpu-bs4
+sbatch --export=ALL,LINEAR_PID_STAGE_OUTPUT_ROOT=/home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/2node-8gpu-bs4,REPO_ROOT=/home/ganchangyi/code/PiD-Linear,LINEAR_PID_ENV=linear-pid,CPU_THREADS=1 \
   scripts/train_linear_pid_kda10_direct_8gpu_bs4.slurm
 ```
 
@@ -26,7 +26,7 @@ sbatch --export=ALL,LINEAR_PID_STAGE_OUTPUT_ROOT=/home/ganchangyi/code/PiD-Linea
 
 ```bash
 squeue -j 116643
-tail -f /home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/2node-8gpu-bs4/slurm-116643.out
+tail -f /home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/2node-8gpu-bs4/slurm-116643.out
 ```
 
 Slurm 脚本语法检查、实际离线路径 preflight 和首次初始化计划检查通过；初始化转换、恢复、周期保存、自动续训相关 19 项测试通过。提交后首次查询为 `PENDING (Priority)`，尚未执行八卡训练。

@@ -14,12 +14,12 @@
 conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
 GPU_IDS=0 CPU_THREADS=1 bash scripts/compare_linear_pid_inference.sh \
-  --checkpoint /home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/node01/kda_0-1-2-4-5-6-8-9-10-12 \
+  --checkpoint /home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/node01/kda_0-1-2-4-5-6-8-9-10-12 \
   --baseline original --case generated_000_2048 \
   --steps 25 --cfg 5 --shift 6 \
   --repeats 3 --sample-warmup 1 --network-repeats 10 --network-warmup 3 \
   --threads 1 --workers 2 \
-  --output-dir /home/ganchangyi/code/PiD-Linear/outputs/inference_comparison/original-vs-trained-2k
+  --output-dir /home/ganchangyi/experiment/PiD-Linear/inference_comparison/original-vs-trained-2k
 ```
 
 这个输入的 prompt 是 `A red fox standing in snowy woodland at sunrise, fine fur, soft light.`，文本条件和 latent 直接复用现有画廊文件，不需要重新加载 Gemma 或 Z-Image。`--asset /absolute/path/to/prepared.pt` 可以指定其他已经准备好的条件包。多个 `--case` 时加 `--limit 0`，防止默认 limit 1 限制选择。
@@ -36,7 +36,7 @@ GPU_IDS=0,1,2,3 CPU_THREADS=1 bash scripts/compare_linear_pid_inference.sh \
   --baseline original --resolution 2048 --kind generated --limit 8 \
   --steps 25 --cfg 5 --shift 6 --repeats 3 --sample-warmup 1 \
   --threads 1 --workers 2 \
-  --output-dir /home/ganchangyi/code/PiD-Linear/outputs/inference_comparison/eight-prompts-2k
+  --output-dir /home/ganchangyi/experiment/PiD-Linear/inference_comparison/eight-prompts-2k
 ```
 
 4K 对比使用 `--resolution 4096`，选择已有 4K 画廊；不要直接把 2K 条件包中的尺寸改成 4K。
@@ -52,7 +52,7 @@ GPU_IDS=0 CPU_THREADS=1 bash scripts/compare_linear_pid_inference.sh \
   --prompt 'A mountain lake reflecting snow-covered peaks, pine trees, crisp fine details.' \
   --height 2048 --width 2048 --seed 42 \
   --steps 25 --cfg 5 --shift 6 --repeats 3 \
-  --output-dir /home/ganchangyi/code/PiD-Linear/outputs/inference_comparison/custom-lake
+  --output-dir /home/ganchangyi/experiment/PiD-Linear/inference_comparison/custom-lake
 ```
 
 PiD 需要 latent 条件。只有 prompt 时，先用本地 Z-Image-Turbo 生成一份固定 latent，再用 Gemma 编码 prompt，缓存到 `conditions/custom.pt`。两侧复用该文件。也可以提供 `--image /absolute/path/to/image.jpg`，经 Lanczos 中心裁剪、4 倍下采样及冻结 FLUX VAE 编码；或提供 `--latent /absolute/path/to/latent.pt`。输出尺寸必须是 32 的倍数，latent 必须为 `[1,16,height/32,width/32]`。自定义 4K 使用 `--height 4096 --width 4096`。
@@ -90,11 +90,11 @@ python -m pid._src.linear_pid.compare_inference \
 conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
 GPU_IDS=2 CPU_THREADS=1 bash scripts/compare_linear_pid_inference.sh \
-  --checkpoint /home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/node01/kda_0-1-2-4-5-6-8-9-10-12/checkpoints/step_000003314_batch_000003314 \
+  --checkpoint /home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/node01/kda_0-1-2-4-5-6-8-9-10-12/checkpoints/step_000003314_batch_000003314 \
   --baseline original --case generated_000_2048 \
   --steps 25 --cfg 5 --shift 6 --repeats 3 --profile-sections \
   --threads 1 --workers 2 \
-  --output-dir /home/ganchangyi/code/PiD-Linear/outputs/inference_comparison/sections-2k-step3314
+  --output-dir /home/ganchangyi/experiment/PiD-Linear/inference_comparison/sections-2k-step3314
 ```
 
 每侧测量 JSON 的 `section_profile` 包含调用数、各 section 的逐次耗时、总耗时、平均/中位每次前向耗时。`summary.csv/json` 同时增加两侧 MMDiT、PiT、Attention 和其他工作的每次前向平均耗时及加速比。

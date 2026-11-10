@@ -1,5 +1,7 @@
 # FLUX3 Sliding11 + KDA
 
+代码工作目录为 `/home/ganchangyi/code/PiD-Linear`，实验目录为 `/home/ganchangyi/experiment/PiD-Linear`。每个实验使用独立子目录存放断点、图片和日志；同一实验的独立阶段或对照组分别保留最新完整断点。仓库内的 `outputs` 是指向实验目录的符号链接，供已有脚本使用。切换分支前先停止运行中的训练与验证。断点及本机归档说明见 [工作目录](docs/workspace.md)。
+
 `main` 的默认训练入口是在线读取图片和 caption、编码、CLEAR 微调及独立验证。完整说明见 [FLUX KDA](flux_kda/README.md)，八卡配置见 [H800 4K 配置](flux_kda/configs/h800-8gpu-4k.json)。修改配置中的模型、资源和数据路径后运行：
 
 ```bash

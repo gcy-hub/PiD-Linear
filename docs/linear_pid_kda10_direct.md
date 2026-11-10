@@ -11,7 +11,7 @@ KDA `[0,1,2,4,5,6,8,9,10,12]` 的 Q/K/V/O 随机初始化，局部卷积零初�
 
 ## 同一实验使用固定目录
 
-当前唯一输出根目录为 `/home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/node01`，实际运行目录为其下的 `kda_0-1-2-4-5-6-8-9-10-12`。checkpoint、日志、SwanLab 离线数据和验证图均保存在该目录。换卡数或 batch 仍使用这个目录；只有用户要求独立实验或改变模型架构时才创建其他实验目录。
+当前唯一输出根目录为 `/home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/node01`，实际运行目录为其下的 `kda_0-1-2-4-5-6-8-9-10-12`。checkpoint、日志、SwanLab 离线数据和验证图均保存在该目录。换卡数或 batch 仍使用这个目录；只有用户要求独立实验或改变模型架构时才创建其他实验目录。
 
 2026-10-06 原有 `node01-bs4-from1349` 和 `node01-3gpu-bs4-from1596` 已合并回这个目录，保留 checkpoint 文件原文、所有 SwanLab 分段、验证图和日志。当前续训保存到 step 1613 后完成合并，再从 1613 恢复。各分段原配置和日志副本在 `history/`，没有完整 checkpoint 的旧 `node01-bs4` 尝试在 `history/abandoned-bs4-retry/`。旧绝对路径与统一路径的映射记录在 `directory_migration.json`，历史 checkpoint 中的路径字段保持原文。源目录合并时没有复制大型 checkpoint。
 
@@ -30,7 +30,7 @@ conda activate linear-pid
 cd /home/ganchangyi/code/PiD-Linear
 python scripts/watch_linear_pid_training.py --install \
   --layers 10 \
-  --output-root /home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/node01 \
+  --output-root /home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/node01 \
   --gpu-ids 1,2,3 --batch-size 4 --grad-accum 1 --effective-batch 12 \
   --workers 4 --threads 1 --max-seconds 1680 --min-free-mib 45300 \
   --disable-fla-tensor-cache --allow-batch-size-change
@@ -49,7 +49,7 @@ bash scripts/train_linear_pid.sh \
   --batch-size 4 --grad-accum 1 --effective-batch 12 --workers 4 --threads 1 \
   --text-cache-root /home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_text_cache \
   --pit-chunk-size 2048 --max-seconds 1680 \
-  --output-root /home/ganchangyi/code/PiD-Linear/outputs/linear-pid-kda10-direct/node01 \
+  --output-root /home/ganchangyi/experiment/PiD-Linear/linear-pid-kda10-direct/node01 \
   --resume auto --allow-batch-size-change
 ```
 

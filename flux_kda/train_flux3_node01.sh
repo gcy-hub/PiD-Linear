@@ -6,7 +6,7 @@ export OMP_NUM_THREADS=4
 export FLA_DISABLE_TENSOR_CACHE=1
 export PYTORCH_ALLOC_CONF=expandable_segments:True
 PYTHON=/home/ganchangyi/software/miniconda3/envs/flux3-qdm/bin/python
-OUTPUT="${1:-outputs/flux3-stock-kda-clear-node01-bs1}"
+OUTPUT="${1:-/home/ganchangyi/experiment/PiD-Linear/flux3-stock-kda-clear-node01-bs1}"
 WEIGHTS=/home/ganchangyi/huggingface_ckpts/flux-3-image-klein-base/model.safetensors
 DATA=/home/ganchangyi/dataset/CLEAR-FLUX3-klein-base-2K-2048_20261106-1102/CLEAR-FLUX3-klein-base-2K-2048
 mkdir -p "$OUTPUT"

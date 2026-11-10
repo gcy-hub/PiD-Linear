@@ -11,7 +11,7 @@ class LinearPiDConfig:
     weights_root: str = "/home/ganchangyi/huggingface_ckpts"
     index_root: str = "/home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_index"
     text_cache_root: str = "/home/ganchangyi/dataset/MultiAspect-4K-1M/linear_pid_text_cache"
-    output_root: str = "/home/ganchangyi/code/PiD-Linear/outputs/linear-pid"
+    output_root: str = "/home/ganchangyi/experiment/PiD-Linear/linear-pid"
     preset: str = "4gpu"
     layers: list[int] = field(default_factory=lambda: resolve_layers(4))
     batch_size: int = 1
@@ -37,7 +37,7 @@ class LinearPiDConfig:
     log_steps: int = 10
     validation_steps: int = 5000
     validation_epochs: int = 1
-    gallery_root: str = "/home/ganchangyi/code/PiD-Linear/outputs/linear-pid/assets"
+    gallery_root: str = "/home/ganchangyi/experiment/PiD-Linear/linear-pid/assets"
     swanlab_mode: str = "offline"
     resume: str = "auto"
     resume_from: str = ""
