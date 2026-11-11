@@ -17,7 +17,7 @@
 | 严格确定性 PiD sliding_qdm / VDN+CLEAR 原生闭环 | 中止，未判通过 | `8ba08ac`，用户切换优先级时停止 workflow `01M740D44S0S39MF9909K629QN`；checkpoint 与日志保留于 `gpu-native-resume-8ba08ac/` |
 | FLUX2 sliding_qdm / VDN+CLEAR 原生闭环 | 未执行 | 上游失败/优先级调整前尚未运行 |
 | FLUX3 sliding_qdm / VDN+CLEAR 原生闭环 | 未执行 | 上游失败/优先级调整前尚未运行 |
-| FLUX3 cross_scan_kda / CLEAR 原生四卡完整闭环 | 待执行，当前优先项 | 测试前提交本记录；测试结果追加于本文件与独立报告 |
+| FLUX3 cross_scan_kda / CLEAR 原生四卡完整闭环 | 在线编码 OOM，缓存模式待重测 | `3ab21c5`，`priority-flux3-kda-clear-3ab21c5/acceptance.json`：全 33 层，在线编码后在 CLEAR feature loss 申请 8 MiB 时 GPU0 耗尽，尚未完成 backward。重测复用真实编码并校验过的 FLUX3 图文缓存，其他精度/层/优化器设置不变 |
 | 其余算法/策略的完整原生闭环 | 未执行 | 不能由 12 组合层检查或 21 小模型策略检查替代；当前原生闭环入口默认 sliding_qdm，完整测试须显式选择算法和策略 |
 | H800 8 GPU / 4K / batch4、长程画质 | 未验证 | 本机四张 A40 不覆盖此硬件和规模 |
 
@@ -37,3 +37,5 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 ACCEPTANCE_REPORT_DIR="$REPORT" \
 该命令比较连续与逐步保存恢复两条路径，四 rank、每卡 batch1、累积2、4步、真实在线编码、独立验证生成、中断补图及 public CLI 恢复；所有权重、优化器、scheduler、progress、RNG 使用精确比较。原生资源 JSON 控制 BF16、gradient checkpointing、优化器分片与 CPU offload。
 
 重测其他项时用 `--scenario pid_cycle` / `flux2_cycle` / `flux3_cycle`，通过 `--algorithm` 选择四种算法，通过 `--strategy vdn` 或 `clear` 选择有效策略；CLEAR attention 不支持 VDN。不传策略会执行 VDN 与 CLEAR 两种闭环。完整控制器入口和绑定方法见 `attention-framework-acceptance.md`。每次保留版本、命令、实际配置、结果与来源；中止、blocked 和未执行均不记为通过。
+
+优先项缓存重测使用 `gpu-0330/flux3/cache` 的 24 条真实验收样本。CPU 预检逐条读取图文张量并核对完整 metadata，24 条全部匹配，未加载 TE/VAE。该小型验收缓存独立于后续生产缓存任务。重测资源 JSON 需设置 `cache.image=true`、`cache.text=true` 以及该缓存根目录。在线模式的四种缓存/编码器行为已有 family 检查覆盖，完整训练闭环按缓存模式测量。
