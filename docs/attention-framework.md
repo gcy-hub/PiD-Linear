@@ -1,6 +1,6 @@
 # 数据与训练生命周期
 
-新框架的入口契约见 [共享约定](../plans/attention-framework/contract.md)。命令从仓库根目录运行。默认输出到仓库旁 `../experiment/`。
+新框架的入口契约见 [共享约定](attention-framework-contract.md)。命令从仓库根目录运行。默认输出到仓库旁 `../experiment/`。
 
 数据使用实际 manifest 的记录数，不使用写死的 80K/50K 长度。JSONL/CSV 中的样本身份、caption、尺寸及相对图像路径交给统一 loader；路径相对 manifest。预处理保留 EXIF 方向、等比缩放/裁剪、过小样本拒绝统计。默认桶复用 `pid/_src/datasets/buckets.py`；小分辨率验收配置单独指定小桶，不修改官方桶表。
 
@@ -57,4 +57,4 @@ PiD 保存完整 RGB 训练目标和干净的低分辨率 VAE condition；缓存
 
 A1 每个 microbatch 需要额外一次 layerwise 前向，并保留整个累积窗口的已准备输入；当前接口在能量统计期间也计算 student 输出，各 callback 之间不保留 student 图。
 
-真实资源、GPU 数值检查与完整闭环尚待验收。缓存与采样入口可执行不代表这些检查已经通过。
+已执行检查与待测闭环见 [验收记录](attention-framework-outstanding-tests.md)。H800 八卡目标规模尚未验证。

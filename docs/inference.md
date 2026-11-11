@@ -101,9 +101,9 @@ training configurations use:
 
 | Experiment family | 2K fix-batch example | 2K-to-4K fix-batch example |
 | --- | --- | --- |
-| `flux` | `assets/pid_callback_assets/zimage/full_step/2048` | `assets/pid_callback_assets/zimage/full_step/4096` |
-| `flux2` | `assets/pid_callback_assets/flux2/full_step/2048` | `assets/pid_callback_assets/flux2/full_step/4096` |
-| `qwenimage` | `assets/pid_callback_assets/qwenimage/full_step/2048` | `assets/pid_callback_assets/qwenimage/full_step/4096` |
+| `flux` | `../experiment/pid-callback-assets/zimage/full_step/2048` | `../experiment/pid-callback-assets/zimage/full_step/4096` |
+| `flux2` | `../experiment/pid-callback-assets/flux2/full_step/2048` | `../experiment/pid-callback-assets/flux2/full_step/4096` |
+| `qwenimage` | `../experiment/pid-callback-assets/qwenimage/full_step/2048` | `../experiment/pid-callback-assets/qwenimage/full_step/4096` |
 
 The FLUX PiD configuration uses Z-Image callback assets because they share the
 compatible FLUX VAE latent space. Intermediate LDM latents, such as `46step`,
@@ -121,7 +121,7 @@ CKPT=/path/to/teacher/run/checkpoints/iter_XXXXXXXXX
 PYTHONPATH=. python -m pid._src.inference_internal.pid_inference \
     --experiment "$EXP" \
     --checkpoint_path "$CKPT" \
-    --input_path assets/0072.jpg \
+    --input_path /path/to/input.jpg \
     --caption "A tranquil alpine lakeside scene framed by forested mountains" \
     --output_dir ./results/training_checkpoints/pid_teacher \
     --save_format png \
@@ -136,7 +136,7 @@ arguments with a fix-batch directory:
 PYTHONPATH=. python -m pid._src.inference_internal.pid_inference \
     --experiment "$EXP" \
     --checkpoint_path "$CKPT" \
-    --fix_batch_dir assets/pid_callback_assets/qwenimage/full_step/2048 \
+    --fix_batch_dir ../experiment/pid-callback-assets/qwenimage/full_step/2048 \
     --max_samples 16 --batch_size 1 \
     --output_dir ./results/training_checkpoints/pid_teacher_fix_batch \
     --save_format png \
@@ -157,7 +157,7 @@ PYTHONPATH=. torchrun --nproc_per_node=4 \
     -m pid._src.inference_internal.pid_inference \
     --experiment "$EXP" \
     --checkpoint_path "$CKPT" \
-    --fix_batch_dir assets/pid_callback_assets/qwenimage/full_step/2048 \
+    --fix_batch_dir ../experiment/pid-callback-assets/qwenimage/full_step/2048 \
     --batch_size 1 \
     --output_dir ./results/training_checkpoints/pid_student \
     --save_format png \

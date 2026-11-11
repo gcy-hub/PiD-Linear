@@ -321,7 +321,7 @@ def spawn_worker(root, fd, env=None):
             [
                 sys.executable,
                 "-m",
-                "scripts.repeat_pid_vdn",
+                "training.repeat_pid_vdn",
                 "--worker",
                 "--output-root",
                 str(root),

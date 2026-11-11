@@ -1,20 +1,20 @@
-# 训练与工具入口
+# 执行入口
 
-从仓库根目录运行，路径与算法/batch/窗口/步数通过配置覆盖。默认输出到 `../experiment/`。
+从仓库根目录运行。Python 逻辑按职责放在 `training/`、`data/`、`download/`；本目录保存 shell 与 Slurm 启动入口，参数原样传递。
 
-| 工作 | 入口 |
+| 用途 | 入口 |
 |---|---|
-| 解析/校验配置，不加载 GPU | `python -m attention_framework.config --print-config ...` |
-| 统一训练与保存/独立验证生命周期 | `python -m training.run ...` |
-| 原生图像/文本缓存准备 | `python -m data.prepare --phase all --devices cuda:0 --cache-batch-size 1 ...` |
-| 独立 checkpoint 采样 | `python -m training.validate --config <resolved.yaml> --checkpoint <complete目录>` |
-| 生成真实资源验收绑定 | `python scripts/generate_attention_bindings.py --resources <JSON> --output <bindings.json>` |
-| 四卡验收（规划默认不执行） | `python scripts/accept_attention_framework.py --reports <目录>` |
-| CPU 配置/reference 与验收 gate | `CUDA_VISIBLE_DEVICES='' python -m unittest discover -s tests/attention_framework -p 'test_*.py' -v` |
-| 显式资源与数据下载 | [download/README.md](../download/README.md) |
+| 共享 attention 训练 | `python -m training.run` |
+| 共享缓存准备 / 采样 | `python -m data.prepare` / `python -m training.validate` |
+| 原生 PiD / PixelDiT 训练与续训 | `bash scripts/train_adapt.sh --config configs/training/pid-qdm.json --mode train`（或 `repeat`） |
+| 原生 DMD | `torchrun --standalone --nproc_per_node=4 -m training.train --config pid/_src/configs/pid_training/config.py` |
+| 原生索引 / 子集准备 | `python -m data.prepare_pid_data --help` / `python -m data.prepare_pid_vdn_data --help` |
+| 原生文本缓存 / 固定条件 | `bash scripts/prepare_pid_text_cache.sh` / `bash scripts/prepare_pid_assets.sh` |
+| 原生独立采样 | `bash scripts/sample_pid_vdn.sh` |
+| 原生完整数据准备与 A1→A2→B | `bash scripts/train_pid_qdm_4k_8gpu_pipeline.sh --help` |
+| 原生阶段编排 / Slurm | `bash scripts/train_qdm_stages.sh` / `sbatch scripts/train.slurm` |
+| PixelDiT 合成图像 A1 | `bash scripts/train_pixeldit_synthetic_a1.sh` |
+| DCP 权重合并 | `python -m training.convert_distcp_to_pt --help` |
+| 下载 / WebDataset 分片 | `download/` / `python -m data.sharding_wds --help` |
 
-统一配置命令见 [README](../README.md)，数据/缓存和恢复语义见 [生命周期](../docs/attention-framework.md)。prepare 同时准备可恢复缓存；无需缓存时直接用 manifest 训练。独立采样读取完整新 checkpoint。验收绑定方法见 [四卡验收](../docs/attention-framework-acceptance.md)。
-
-原生 PiD DMD 仍使用 `torchrun ... -m scripts.train --config <Python配置>`；`scripts/train.py` 和多机模板保留。`pid/_src/pixeldit_qdm/synthetic_pipeline.py` 仍调用 `train_adapt.sh` 与 `train_pixeldit_synthetic_cycle.sh`，所以保留对应薄入口及原生合成数据编排。`train_qdm_stages.sh`/`repeat_pid_vdn.py` 的原生调用仍有使用者，不在新框架交付中机械删除。
-
-保留的原生诊断、采样和实验说明见 [原生训练](../docs/historical-training.md)。旧 FLUX 参数脚本与训练/缓存实现已移除；外部历史 checkpoint 和缓存保留，使用相应历史 Git revision 读取。数值诊断统一运行 `python -m algorithms.checks.cpu`，独立密集参考位于 `algorithms/checks/references.py`。
+原生资源、阶段及恢复用法见 [原生训练](../docs/historical-training.md)。共享框架见 [生命周期](../docs/attention-framework.md)，FLUX3 八卡目标命令见 [训练说明](../docs/flux3-crosslayer-kda-80k.md)。

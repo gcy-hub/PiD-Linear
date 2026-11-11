@@ -182,7 +182,7 @@ The root configuration has already selected `data_train: mock_image`, so the exp
 You can also override the experiment's selection from the command line:
 
 ```bash
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
   --config=pid/_src/configs/pid_training/config.py \
   -- \
   experiment=pixeldit_text_to_image_finetune_res_2048 \

@@ -8,7 +8,7 @@
 
 1. DCP 格式是什么；
 2. teacher training 与 distillation training 的真实 checkpoint 目录结构；
-3. 如何使用 `scripts/convert_distcp_to_pt.py` 将 DCP 模型权重合并为单文件 `.pth`。
+3. 如何使用 `training/convert_distcp_to_pt.py` 将 DCP 模型权重合并为单文件 `.pth`。
 
 发布模型的路径索引仍见 [checkpoints.md](checkpoints.md)。本文只讨论训练过程中产生的 checkpoint。
 
@@ -19,7 +19,7 @@
 | `pid/_ext/imaginaire/checkpointer/dcp.py` | 普通 teacher/model 训练使用的 `DistributedCheckpointer` |
 | `pid/_src/checkpointer/dcp_distill.py` | 多 optimizer/scheduler 蒸馏训练使用的 `DistillationCheckpointer` |
 | `pid/_src/configs/common/defaults/ckpt_type.py` | 注册 Hydra 的 `dcp` 与 `dcp_distill` 选项 |
-| `scripts/convert_distcp_to_pt.py` | 将一个 DCP state-dict 目录转换为单文件 `.pth` |
+| `training/convert_distcp_to_pt.py` | 将一个 DCP state-dict 目录转换为单文件 `.pth` |
 
 Teacher 实验通常选择：
 
@@ -200,7 +200,7 @@ scheduler_<key>/
 使用：
 
 ```text
-scripts/convert_distcp_to_pt.py
+training/convert_distcp_to_pt.py
 ```
 
 转换模型时，输入必须是本地文件系统中的 DCP 目录，并精确指向某个 iteration 下的 `model/`：
@@ -215,7 +215,7 @@ scripts/convert_distcp_to_pt.py
 
 ```bash
 mkdir -p /path/to/output_dir
-PYTHONPATH=. python scripts/convert_distcp_to_pt.py \
+PYTHONPATH=. python -m training.convert_distcp_to_pt \
   /path/to/checkpoints/iter_000000025/model \
   /path/to/output_dir
 ```
@@ -232,7 +232,7 @@ PYTHONPATH=. python scripts/convert_distcp_to_pt.py \
 
 ```bash
 mkdir -p /path/to/output_dir
-PYTHONPATH=. python scripts/convert_distcp_to_pt.py \
+PYTHONPATH=. python -m training.convert_distcp_to_pt \
   /path/to/checkpoints/iter_000000025/model \
   /path/to/output_dir \
   --ema
@@ -259,7 +259,7 @@ INPUT="imaginaire4/imaginaire4-interactive-output/pid_training/pid_training_v1pt
 OUTPUT="checkpoints/converted/teacher_flux2_iter_000000025"
 
 mkdir -p "$OUTPUT"
-PYTHONPATH=. python scripts/convert_distcp_to_pt.py "$INPUT" "$OUTPUT" --ema
+PYTHONPATH=. python -m training.convert_distcp_to_pt "$INPUT" "$OUTPUT" --ema
 ```
 
 Distillation 样例的转换方式相同，只需将 `INPUT` 改为其 `iter_000000025/model` 目录。

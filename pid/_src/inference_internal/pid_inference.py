@@ -23,7 +23,7 @@ Supported input formats:
        --input_path image.png --caption "description of the image"
 
     2. Fix-batch directory containing ``fix_batch_*.pt`` files:
-       --fix_batch_dir assets/pid_callback_assets/qwenimage/full_step/2048
+       --fix_batch_dir ../experiment/pid-callback-assets/qwenimage/full_step/2048
        The model consumes the saved latent; LQ/HQ images stay on the script side.
 
 The experiment, checkpoint, and callback assets must belong to the same model
@@ -41,7 +41,7 @@ Example1: Teacher model (single image + caption):
     PYTHONPATH=. python -m pid._src.inference_internal.pid_inference \
         --experiment "$EXP" \
         --checkpoint_path "$CKPT" \
-        --input_path assets/0072.jpg \
+        --input_path /path/to/input.jpg \
         --caption "A tranquil alpine lakeside scene unfolds where a gravel path winds toward a serene, emerald-green lake framed by towering, forested mountains under a soft, overcast sky" \
         --output_dir results/pid_inference \
         --cfg_scale 5 --num_steps 25
@@ -51,7 +51,7 @@ Example2: Teacher model (fix-batch directory):
     PYTHONPATH=. python -m pid._src.inference_internal.pid_inference \
         --experiment "$EXP" \
         --checkpoint_path "$CKPT" \
-        --fix_batch_dir assets/pid_callback_assets/qwenimage/full_step/2048 \
+        --fix_batch_dir ../experiment/pid-callback-assets/qwenimage/full_step/2048 \
         --output_dir results/pid_inference \
         --cfg_scale 5 --num_steps 25
 
@@ -64,7 +64,7 @@ Example3: Student model (fix-batch directory with data parallelism):
         -m pid._src.inference_internal.pid_inference \
         --experiment "$EXP" \
         --checkpoint_path "$CKPT" \
-        --fix_batch_dir assets/pid_callback_assets/qwenimage/full_step/2048 \
+        --fix_batch_dir ../experiment/pid-callback-assets/qwenimage/full_step/2048 \
         --output_dir results/pid_inference \
         --cfg_scale 1 --num_steps 4
 """
@@ -122,7 +122,7 @@ def parse_arguments():
     input_group.add_argument(
         "--fix_batch_dir",
         type=str,
-        help="Directory of fix_batch .pt files, typically under assets/pid_callback_assets",
+        help="Directory of fix_batch .pt files, typically under ../experiment/pid-callback-assets",
     )
 
     # Caption options

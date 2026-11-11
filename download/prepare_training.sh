@@ -18,21 +18,21 @@ export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TOKENIZERS_PARALLELISM=false
 IFS=',' read -ra PREPARE_GPUS <<< "$GPU_IDS"
 
 # Build the full image index; decode failures during training skip the global batch.
-python scripts/prepare_pid_data.py \
+python -m data.prepare_pid_data \
     --dataset-root "$DATASET_ROOT" --output-root "$DATASET_ROOT/linear_pid_index" \
     --workers "$INDEX_WORKERS" --validation-size 1024 --seed 42 \
     --image-verification header --resume
 
 # Cache all captions on the selected GPUs, preserving per-shard progress.
 torchrun --standalone --nproc_per_node="${#PREPARE_GPUS[@]}" \
-    -m scripts.prepare_pid_text_cache \
+    -m data.prepare_pid_text_cache \
     --dataset-root "$DATASET_ROOT" --output-root "$DATASET_ROOT/linear_pid_text_cache" \
     --weights-root "$WEIGHTS_ROOT" --batch-size "$TEXT_BATCH_SIZE" \
     --workers "$TEXT_WORKERS" --threads "$CPU_THREADS" --max-seconds 0 --resume
 
 # Fixed real-image and Z-Image-Turbo conditions for the 2K/4K validation galleries.
 torchrun --standalone --nproc_per_node="${#PREPARE_GPUS[@]}" \
-    -m scripts.prepare_pid_assets \
+    -m data.prepare_pid_assets \
     --weights-root "$WEIGHTS_ROOT" --index-root "$DATASET_ROOT/linear_pid_index" \
     --output-root "$GALLERY_ROOT" \
     --real-count 64 --generated-count 32 --four-k-count 8 --seed 42

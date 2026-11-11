@@ -63,7 +63,7 @@ def _build_debug_run(job):
 
 """
 PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12350 \
-    -m scripts.train --config=pid/_src/configs/pid_training/config.py \
+    -m training.train --config=pid/_src/configs/pid_training/config.py \
     -- experiment="pid_v1pt5_student_flux_h1024_d4_res_2048_distill_debug"
 """
 PID_V1PT5_STUDENT_FLUX_H1024_D4_RES_2048_DISTILL: LazyDict = LazyDict(
@@ -182,8 +182,8 @@ PID_V1PT5_STUDENT_FLUX_H1024_D4_RES_2048_DISTILL: LazyDict = LazyDict(
             callbacks=dict(
                 grad_clip=dict(clip_norm=0.1),
                 **get_every_n_callbacks_fullstep(
-                    fix_batch_fp="assets/pid_callback_assets/zimage/full_step/2048/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/zimage/full_step/2048",
+                    fix_batch_fp="../experiment/pid-callback-assets/zimage/full_step/2048/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/zimage/full_step/2048",
                     guidance_draw_sample=[1],
                     guidance_evaluate=1,
                     num_sampling_step=4,
@@ -192,8 +192,8 @@ PID_V1PT5_STUDENT_FLUX_H1024_D4_RES_2048_DISTILL: LazyDict = LazyDict(
                     name="res2048",
                 ),
                 **get_every_n_callbacks_fullstep(
-                    fix_batch_fp="assets/pid_callback_assets/zimage/46step/2048/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/zimage/46step/2048",
+                    fix_batch_fp="../experiment/pid-callback-assets/zimage/46step/2048/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/zimage/46step/2048",
                     guidance_draw_sample=[1],
                     guidance_evaluate=1,
                     num_sampling_step=4,
@@ -208,7 +208,7 @@ PID_V1PT5_STUDENT_FLUX_H1024_D4_RES_2048_DISTILL: LazyDict = LazyDict(
 
 """
 PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12350 \
-    -m scripts.train --config=pid/_src/configs/pid_training/config.py \
+    -m training.train --config=pid/_src/configs/pid_training/config.py \
     -- experiment="pid_v1pt5_student_flux_h1024_d4_res_2048_to_3840_distill_debug"
 """
 PID_V1PT5_STUDENT_FLUX_H1024_D4_RES_2048_TO_3840_DISTILL: LazyDict = LazyDict(
@@ -228,8 +228,8 @@ PID_V1PT5_STUDENT_FLUX_H1024_D4_RES_2048_TO_3840_DISTILL: LazyDict = LazyDict(
         trainer=dict(
             callbacks=dict(
                 **get_every_n_callbacks_fullstep(
-                    fix_batch_fp="assets/pid_callback_assets/zimage/full_step/4096/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/zimage/full_step/4096",
+                    fix_batch_fp="../experiment/pid-callback-assets/zimage/full_step/4096/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/zimage/full_step/4096",
                     guidance_draw_sample=[1],
                     guidance_evaluate=1,
                     num_sampling_step=4,
@@ -238,8 +238,8 @@ PID_V1PT5_STUDENT_FLUX_H1024_D4_RES_2048_TO_3840_DISTILL: LazyDict = LazyDict(
                     name="res4096",
                 ),
                 **get_every_n_callbacks_fullstep(
-                    fix_batch_fp="assets/pid_callback_assets/zimage/46step/4096/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/zimage/46step/4096",
+                    fix_batch_fp="../experiment/pid-callback-assets/zimage/46step/4096/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/zimage/46step/4096",
                     guidance_draw_sample=[1],
                     guidance_evaluate=1,
                     num_sampling_step=4,

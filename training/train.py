@@ -80,7 +80,7 @@ def launch(config: Config, args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
-    # Usage: torchrun --nproc_per_node=8 --master_port=12341 -m scripts.train --config=linearvsr/_src/configs/t2v_wan/config.py -- experiment="wan2pt1_1pt3B_res480p_16fps_cp_new_mock_wo_resume"
+    # Usage: torchrun --nproc_per_node=8 --master_port=12341 -m training.train --config=linearvsr/_src/configs/t2v_wan/config.py -- experiment="wan2pt1_1pt3B_res480p_16fps_cp_new_mock_wo_resume"
 
     # Get the config file from the input arguments.
     parser = argparse.ArgumentParser(description="Training")

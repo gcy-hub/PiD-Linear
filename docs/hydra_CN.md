@@ -17,14 +17,14 @@
 从仓库根目录启动 4 卡训练：
 
 ```bash
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
   --config=pid/_src/configs/pid_training/config.py \
   -- experiment="pixeldit_text_to_image_finetune_res_2048"
 ```
 
 这条命令可以拆成三部分：
 
-1. `torchrun ... -m scripts.train` 启动分布式训练入口；
+1. `torchrun ... -m training.train` 启动分布式训练入口；
 2. `--config=.../config.py` 指定 Python 根配置模块；
 3. 独立的 `--` 后面全部是 Hydra override，`experiment=...` 表示选择一个实验配置。
 
@@ -36,7 +36,7 @@ PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
 配置从命令行到训练对象的流程如下：
 
 ```text
-scripts/train.py
+training/train.py
   -> 导入 --config 指定的模块并调用 make_config()
   -> 注册基础配置组，并导入实验模块完成实验注册
   -> hydra.compose() 处理 defaults 和命令行 override
@@ -54,7 +54,7 @@ scripts/train.py
 | `pid/_src/configs/common/defaults/` | 优化器、scheduler、checkpoint 等通用配置 |
 | `pid/_src/configs/pid_training/experiment_pixeldit_finetune/finetune.py` | PixelDiT finetune 实验配置及注册 |
 | `pid/_ext/imaginaire/utils/config_helper.py` | Hydra compose、override 和 attrs 配置还原 |
-| `scripts/train.py` | 参数解析、配置加载和训练启动 |
+| `training/train.py` | 参数解析、配置加载和训练启动 |
 
 ## 根配置与 `defaults`
 
@@ -183,7 +183,7 @@ defaults=[
 命令行可以同时选择配置组并覆盖最终字段。字段 override 的优先级高于实验中写入的值。
 
 ```bash
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
   --config=pid/_src/configs/pid_training/config.py \
   -- \
   experiment=pixeldit_text_to_image_finetune_res_2048 \
@@ -248,4 +248,4 @@ make_config() 基础值
 - **覆盖路径没有生效**：确认使用的是最终 `package` 路径；例如网络字段位于 `model.config.net`，不是 `net`。
 - **实验值被组件默认值覆盖**：检查 `_self_` 的位置。希望实验正文最后生效时，应将 `_self_` 放在实验 `defaults` 末尾。
 - **新增顶层字段失败**：最终结果会被还原为结构化 attrs 配置，任意新增未声明的顶层字段可能被拒绝；优先覆盖已有字段或先扩展 `Config` 定义。
-- **误用 Hydra multirun**：本项目没有暴露常规 `@hydra.main` 的 `-m/--multirun` 入口；命令中的 `-m scripts.train` 是 Python 模块启动参数。
+- **误用 Hydra multirun**：本项目没有暴露常规 `@hydra.main` 的 `-m/--multirun` 入口；命令中的 `-m training.train` 是 Python 模块启动参数。

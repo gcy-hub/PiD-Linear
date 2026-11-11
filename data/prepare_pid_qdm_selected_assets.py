@@ -16,7 +16,7 @@ from tqdm import tqdm
 from pid._src.common.data import RawImageDataset, atomic_json, resize_crop, sha256_file
 from pid._src.common.runtime import Conditioning
 from pid._src.common.training import init_distributed
-from scripts.prepare_pid_assets import prepare_generated_latents
+from data.prepare_pid_assets import prepare_generated_latents
 
 
 def main():

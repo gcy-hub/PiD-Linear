@@ -8,4 +8,4 @@ export OMP_NUM_THREADS="${CPU_THREADS:-1}"
 export CUDA_VISIBLE_DEVICES="${GPU_IDS:-${CUDA_VISIBLE_DEVICES:-0,1,2,3}}"
 IFS=',' read -ra LINEAR_GPU_ARRAY <<< "$CUDA_VISIBLE_DEVICES"
 exec torchrun --standalone --nproc_per_node="${NPROC_PER_NODE:-${#LINEAR_GPU_ARRAY[@]}}" \
-  -m scripts.prepare_pid_text_cache "$@"
+  -m data.prepare_pid_text_cache "$@"

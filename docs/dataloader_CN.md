@@ -182,7 +182,7 @@ defaults=[
 也可以在命令行覆盖实验自己的选择：
 
 ```bash
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
   --config=pid/_src/configs/pid_training/config.py \
   -- \
   experiment=pixeldit_text_to_image_finetune_res_2048 \

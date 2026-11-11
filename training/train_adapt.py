@@ -32,7 +32,7 @@ def command(argv=None):
     if args.mode == 'repeat':
         if nodes != '1':
             parser.error('Use train mode under Slurm for multi-node runs')
-        result = [sys.executable, '-m', 'scripts.repeat_pid_vdn', *options]
+        result = [sys.executable, '-m', 'training.repeat_pid_vdn', *options]
     else:
         launch = ['--standalone'] if nodes == '1' else [
             '--nnodes', nodes, '--node_rank', os.environ['NODE_RANK'],

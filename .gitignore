@@ -58,3 +58,13 @@ swanlog/
 # Local scheduler artifacts and durable worktrees
 .agents/cron/
 .dsa/
+
+# Local historical planning and retired experiment trees
+/plans/
+/flux_kda/
+/flux2/
+/flux3/
+
+# Python build outputs
+/build/
+/dist/

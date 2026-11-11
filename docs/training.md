@@ -22,15 +22,15 @@ Then download the images and reorganize the data into WebDataset format:
 cd ..
 # For illustration, download 10 of the 1008 metadata files. Remove
 # --max-json-files to download the complete dataset.
-python scripts/download_multiaspect_4k_1m.py --max-json-files 10
+python -m download.download_multiaspect_4k_1m --max-json-files 10
 
 # Convert the downloaded data to WebDataset shards.
-python scripts/sharding_wds.py --input-dir raw_data/MultiAspect-4K-1M-download --output-dir data/image_MultiAspect_4K_1M_webdataset
+python -m data.sharding_wds --input-dir raw_data/MultiAspect-4K-1M-download --output-dir data/image_MultiAspect_4K_1M_webdataset
 ```
 
 To add your own training data, use a directory structure like
 `raw_data/MultiAspect-4K-1M-download`, convert it with
-`scripts/sharding_wds.py`, register the source in
+`data/sharding_wds.py`, register the source in
 `pid/_src/datasets/data_sources/data_source_local.py`, and include it in
 `pid/_src/datasets/data_sources/dataset_definition.py`.
 
@@ -56,12 +56,12 @@ export WANDB_API_KEY=your_wandb_api_key
 
 ```bash
 # finetune on 2k resolution only. The dataloader only ships 2k resolution images.
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pixeldit_text_to_image_finetune_res_2048"
 
 # finetune on 2k to 4k resolution. The dataloader provides various resolution images.
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pixeldit_text_to_image_finetune_res_2048_to_3840"
 ```
@@ -114,7 +114,7 @@ Add the `_debug` suffix to an experiment name to run fewer iterations with
 Weights & Biases logging disabled. For example:
 
 ```bash
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pixeldit_text_to_image_finetune_res_2048_debug"
 ```
@@ -135,7 +135,7 @@ bash pid/_src/dataprep/fix_batch_generation/generate_callback_assets.sh zimage f
 ```
 
 This runs the corresponding Diffusers pipelines and saves their latents and
-sigmas under `assets/pid_callback_assets`. The FLUX PiD configuration can use
+sigmas under `../experiment/pid-callback-assets`. The FLUX PiD configuration can use
 Z-Image assets because both use the compatible FLUX VAE latent space; the other
 configurations use their matching `flux2` or `qwenimage` assets.
 
@@ -160,19 +160,19 @@ all available overrides.
 ```bash
 # Flux. 2k resolution training.
 # Configuration in pid/_src/configs/pid_training/experiment_pid_v1pt5_flux/teacher.py
-PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_teacher_flux_h1024_d4_fix_backbone_res_2048"
 
 # Flux2. 2k resolution training.
 # Configuration in pid/_src/configs/pid_training/experiment_pid_v1pt5_flux2/teacher.py
-PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_teacher_flux2_h1024_d4_fix_backbone_res_2048"
 
 # QwenImage (wan 2.1) VAE. 2k resolution training.
 # Configuration in pid/_src/configs/pid_training/experiment_pid_v1pt5_qwenimage/teacher.py
-PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_teacher_qwenimage_h1024_d4_fix_backbone_res_2048"
 ```
@@ -196,19 +196,19 @@ same pattern.
 ```bash
 # Flux. 2k resolution distillation.
 # Configuration in pid/_src/configs/pid_training/experiment_pid_v1pt5_flux/distillation.py
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_student_flux_h1024_d4_res_2048_distill"
 
 # Flux2. 2k resolution distillation.
 # Configuration in pid/_src/configs/pid_training/experiment_pid_v1pt5_flux2/distillation.py
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_student_flux2_h1024_d4_res_2048_distill"
 
 # QwenImage (wan 2.1) VAE. 2k resolution distillation.
 # Configuration in pid/_src/configs/pid_training/experiment_pid_v1pt5_qwenimage/distillation.py
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_student_qwenimage_h1024_d4_res_2048_distill"
 ```

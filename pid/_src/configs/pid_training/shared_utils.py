@@ -64,9 +64,9 @@ def get_every_n_callbacks_fullstep(
     """Callbacks on fully-denoised (clean) latents from the diffusion backbone.
 
     fix_batch_fp  : path template, e.g.
-        "assets/pixel_diffusion_flux_xt/full_step/2048/fix_batch_{:04d}.pt"
+        "../experiment/pid-callback-assets/flux_xt/full_step/2048/fix_batch_{:04d}.pt"
     fix_batch_dir : directory for EveryNEvaluate, e.g.
-        "assets/pixel_diffusion_flux_xt/full_step/2048"
+        "../experiment/pid-callback-assets/flux_xt/full_step/2048"
 
     No degrade_sigma — these latents have σ=0 (fully denoised).
     n_sample_to_save must match the number of prepared fix_batch_*.pt files.
@@ -126,9 +126,9 @@ def get_every_n_callbacks_at_step(
     Args:
         step_name    : Label used in callback key names, e.g. "16step", "28step".
         fix_batch_fp : Path template for EveryNDrawSample, e.g.
-            "assets/pixel_diffusion_flux_xt/16step/2048/fix_batch_{:04d}.pt"
+            "../experiment/pid-callback-assets/flux_xt/16step/2048/fix_batch_{:04d}.pt"
         fix_batch_dir: Directory for EveryNEvaluate, e.g.
-            "assets/pixel_diffusion_flux_xt/16step/2048"
+            "../experiment/pid-callback-assets/flux_xt/16step/2048"
         n_sample_to_save: Number of prepared fix_batch_*.pt files.
     """
     _s = num_sampling_step

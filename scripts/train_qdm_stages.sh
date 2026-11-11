@@ -25,7 +25,7 @@ for profile in a1:4:1:500:50:-1 a2:4:2:1000:100:-1 b:4:2:10000:2000:2000; do
   finished="$(python - "$PID_QDM_RUN" "$stage" "$steps" "$save" "$validate" <<'CHECK'
 import json,sys,os
 from pathlib import Path
-from scripts.repeat_pid_vdn import stage_finished
+from training.repeat_pid_vdn import stage_finished
 root=Path(sys.argv[1]);stage=sys.argv[2]
 if stage_finished(root,stage):
     cfg=json.loads((root/stage/'config.json').read_text())
@@ -61,7 +61,7 @@ CHECK
   complete="$(python - "$PID_QDM_RUN" "$stage" <<'CHECK'
 from pathlib import Path
 import sys
-from scripts.repeat_pid_vdn import stage_finished
+from training.repeat_pid_vdn import stage_finished
 print(int(stage_finished(Path(sys.argv[1]),sys.argv[2])))
 CHECK
 )"

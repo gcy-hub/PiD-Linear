@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-exec "${PYTHON:-python}" -m scripts.train_adapt "$@"
+exec "${PYTHON:-python}" -m training.train_adapt "$@"

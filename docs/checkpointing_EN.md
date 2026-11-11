@@ -8,7 +8,7 @@ This document explains:
 
 1. What the DCP format is;
 2. The actual checkpoint directory structures used by teacher training and distillation training;
-3. How to use `scripts/convert_distcp_to_pt.py` to consolidate DCP model weights into a single `.pth` file.
+3. How to use `training/convert_distcp_to_pt.py` to consolidate DCP model weights into a single `.pth` file.
 
 For an index of released model paths, see [checkpoints.md](checkpoints.md). This document covers only checkpoints produced during training.
 
@@ -19,7 +19,7 @@ For an index of released model paths, see [checkpoints.md](checkpoints.md). This
 | `pid/_ext/imaginaire/checkpointer/dcp.py` | `DistributedCheckpointer`, used for standard teacher/model training |
 | `pid/_src/checkpointer/dcp_distill.py` | `DistillationCheckpointer`, used for distillation training with multiple optimizers and schedulers |
 | `pid/_src/configs/common/defaults/ckpt_type.py` | Registers the Hydra options `dcp` and `dcp_distill` |
-| `scripts/convert_distcp_to_pt.py` | Converts a DCP state-dict directory into a single `.pth` file |
+| `training/convert_distcp_to_pt.py` | Converts a DCP state-dict directory into a single `.pth` file |
 
 Teacher experiments typically select:
 
@@ -200,7 +200,7 @@ Each logical directory in the teacher example contains two `.distcp` files, whil
 Use:
 
 ```text
-scripts/convert_distcp_to_pt.py
+training/convert_distcp_to_pt.py
 ```
 
 When converting model weights, the input must be a DCP directory on the local filesystem and must point exactly to the `model/` directory under a specific iteration:
@@ -215,7 +215,7 @@ Do not pass the `checkpoints/` root or only the `iter_000000025/` directory. The
 
 ```bash
 mkdir -p /path/to/output_dir
-PYTHONPATH=. python scripts/convert_distcp_to_pt.py \
+PYTHONPATH=. python -m training.convert_distcp_to_pt \
   /path/to/checkpoints/iter_000000025/model \
   /path/to/output_dir
 ```
@@ -232,7 +232,7 @@ The default output is:
 
 ```bash
 mkdir -p /path/to/output_dir
-PYTHONPATH=. python scripts/convert_distcp_to_pt.py \
+PYTHONPATH=. python -m training.convert_distcp_to_pt \
   /path/to/checkpoints/iter_000000025/model \
   /path/to/output_dir \
   --ema
@@ -259,7 +259,7 @@ INPUT="imaginaire4/imaginaire4-interactive-output/pid_training/pid_training_v1pt
 OUTPUT="checkpoints/converted/teacher_flux2_iter_000000025"
 
 mkdir -p "$OUTPUT"
-PYTHONPATH=. python scripts/convert_distcp_to_pt.py "$INPUT" "$OUTPUT" --ema
+PYTHONPATH=. python -m training.convert_distcp_to_pt "$INPUT" "$OUTPUT" --ema
 ```
 
 The distillation example is converted in the same way; only change `INPUT` to its `iter_000000025/model` directory.

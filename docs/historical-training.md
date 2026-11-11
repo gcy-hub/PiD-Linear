@@ -6,7 +6,6 @@
 
 可选执行 [原始 PixelDiT 合成数据 A1 对照](pixeldit-qdm.md#5-用原始-pixeldit-合成图像进行-a1-对照)：复用文本缓存，先生成 1024×1024 图像，再自动开始独立的 A1 微调。
 
-原 PiD-QDM Halo2 版本保留在 `PiD-QDM-Halo2` 分支；**全量数据 4K 训练也已合入当前 main**。已有 50K 导出包的服务器可以自动补齐数据、构建缓存，再串行运行 A1／A2／B，八卡配置和完整命令见 [PiD-QDM 4K 跨服务器训练](pid-qdm-4k-remote.md)。
 
 ## Three-stage training
 
@@ -88,7 +87,7 @@ RUN_OUTPUT=../experiment/pid-qdm sbatch --nodes=1 --gpus-per-node=4 \
 
 将 PiD 的 **14 层 MMDiT Attention** 改为 **局部 Softmax + 固定四象限记忆**，两层 PiT 保持原样。局部 Softmax 是互不重叠的 `8×8 token` 窗口，直接访问文本，保留图像与文本 Q/K 的 RoPE。记忆分支不使用 RoPE：图像 K/V 经 `5×5 DWConv`，四个象限分别联合求解记忆，每个 Q 只读所属象限；取消双向 VDA 的扫描和遗忘衰减，包含自身写入。
 
-这是需要重新恢复训练的研究结构，测速不代表已保持质量。详见 [研究说明](research/spatial-delta-memory.md)。原双向 VDA 入口仍支持 `--memory-mode vda`；本页串行脚本固定使用 `fixed4`。
+这是需要重新恢复训练的研究结构，测速不代表已保持质量。原双向 VDA 入口仍支持 `--memory-mode vda`；本页串行脚本固定使用 `fixed4`。
 
 ## 1. 资源下载
 
@@ -116,7 +115,7 @@ python download/download_models.py --models pid vae gemma \
 | 固定验证条件包 | 约 334 MiB | 已编码的验证文本、latent、mask、seed 与来源索引信息 |
 | 可选 50K 文本缓存 | 约 64.4 GiB | 避免训练时常驻 Gemma |
 
-图片包解压后还需约一份同等大小的空间。包内没有训练索引、文本缓存、模型或验证条件。已有模型可直接设置 `PID_WEIGHTS_ROOT`。复用验证条件时不需要 Z-Image-Turbo；重新从 prompt 生成 latent 才需要它，下载方法见 [下载说明](download/README.md)。
+图片包解压后还需约一份同等大小的空间。包内没有训练索引、文本缓存、模型或验证条件。已有模型可直接设置 `PID_WEIGHTS_ROOT`。复用验证条件时不需要 Z-Image-Turbo；重新从 prompt 生成 latent 才需要它，下载方法见 [下载说明](../download/README.md)。
 
 ## 2. 训练准备
 
@@ -176,7 +175,7 @@ export PID_TEXT_CACHE_ROOT=""
 ```bash
 conda activate linear-pid
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 OMP_NUM_THREADS=1 \
-torchrun --standalone --nproc_per_node=8 -m scripts.prepare_pid_text_cache \
+torchrun --standalone --nproc_per_node=8 -m data.prepare_pid_text_cache \
   --dataset-root "$PID_TRAINING_ROOT/prompts" \
   --output-root "$PID_TRAINING_ROOT/text_cache" \
   --weights-root "$PID_WEIGHTS_ROOT" --batch-size 8 \

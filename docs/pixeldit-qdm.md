@@ -108,7 +108,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --standalone --nproc_per_node=4 \
 
 这是用于判断无图像 latent 条件时 QDM 能否恢复生成质量的实验；代码通过性和训练 loss 不能代替阶段验证图的质量判断。
 
-当前代码的实际训练、推理及恢复检查见 [验证记录](pixeldit-qdm-verification.md)。
+历史训练与推理证据保留在对应 Git revision，当前共享框架状态见 [验收记录](attention-framework-outstanding-tests.md)。
 
 ## 5. 选择性保留 Full Attention
 
@@ -129,7 +129,7 @@ bash scripts/train_adapt.sh --config configs/training/pixeldit-qdm.json --mode r
 
 # 查看日志、停止后台续训。停止后不会自动重启。
 tail -f "$PIXELDIT_PARTIAL_RUN/repeat/latest-training.log"
-python -m scripts.repeat_pid_vdn --stop --output-root "$PIXELDIT_PARTIAL_RUN"
+python -m training.repeat_pid_vdn --stop --output-root "$PIXELDIT_PARTIAL_RUN"
 ```
 
 控制器约每 20 分钟请求保存，并更新控制器与训练子进程。重新运行同一命令会从相同目录恢复。已有全替换模型的输出目录不受影响。可用 `--a1-steps`、`--a2-steps`、`--b-steps` 和三个 `--*-batch-size` 参数覆盖默认预算。

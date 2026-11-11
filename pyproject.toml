@@ -140,7 +140,7 @@ exclude = ["tests*", "docs*", "examples*"]
 [tool.setuptools.package-data]
 # Include all Python files and other required files
 pid = ["py.typed", "**/*.py"]
-configs = ["**/*.yaml", "default.yaml"]
+configs = ["**/*.yaml", "**/*.json", "default.yaml"]
 models = ["vendor/DiffSynth-Studio/**/*"]
 algorithms = ["vendor/LICENSE", "vendor/CLEAR-LICENSE", "vendor/SOURCES.md"]
 

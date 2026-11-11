@@ -75,12 +75,12 @@ def _build_debug_run(job):
 
 """
 # debug run
-PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pixeldit_text_to_image_finetune_res_2048_debug"
 
 # full run
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pixeldit_text_to_image_finetune_res_2048"
 """
@@ -200,7 +200,7 @@ PIXELDIT_TEXT_TO_IMAGE_FINETUNE_RES_2048: LazyDict = LazyDict(
 
 """
 # debug run
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pixeldit_text_to_image_finetune_res_2048_to_3840_debug"
 

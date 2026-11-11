@@ -34,18 +34,18 @@
 #
 # Usage:
 #   # Basic conversion (local DCP -> single .pth)
-#   python scripts/convert_distcp_to_pt.py \
+#   python -m training.convert_distcp_to_pt \
 #       /path/to/iter_000100000/model \
 #       /path/to/output_dir
 #
 #   # Also export EMA-only checkpoints for inference (fp32 + bf16)
-#   python scripts/convert_distcp_to_pt.py \
+#   python -m training.convert_distcp_to_pt \
 #       /path/to/iter_000100000/model \
 #       /path/to/output_dir \
 #       --ema
 #
 #   # Only write model.pth, skip EMA extraction (default without --ema)
-#   python scripts/convert_distcp_to_pt.py \
+#   python -m training.convert_distcp_to_pt \
 #       /path/to/iter_000100000/model \
 #       /path/to/output_dir \
 #       --keep-original
@@ -56,7 +56,7 @@
 #       mv output_dir/model.pth checkpoints/vixeldit/my_experiment_iter_100000.pth
 #
 # Example (from vixeldit finetune config):
-#   python scripts/convert_distcp_to_pt.py \
+#   python -m training.convert_distcp_to_pt \
 #       imaginaire4/.../pixeldit_stage3_finetune_2048px_shift6_gcp/checkpoints/iter_000100000/model \
 #       checkpoints/vixeldit/
 

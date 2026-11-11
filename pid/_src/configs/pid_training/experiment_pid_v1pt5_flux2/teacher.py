@@ -62,7 +62,7 @@ def _build_debug_run(job):
 
 
 """
-PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=1 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_teacher_flux2_h1024_d4_fix_backbone_res_2048_debug"
 """
@@ -156,8 +156,8 @@ PID_V1PT5_TEACHER_FLUX2_H1024_D4_FIX_BACKBONE_RES_2048: LazyDict = LazyDict(
                     every_n_sample=2500,
                 ),
                 **get_every_n_callbacks_fullstep(
-                    fix_batch_fp="assets/pid_callback_assets/flux2/full_step/2048/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/flux2/full_step/2048",
+                    fix_batch_fp="../experiment/pid-callback-assets/flux2/full_step/2048/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/flux2/full_step/2048",
                     guidance_draw_sample=[2.75, 5.0],
                     guidance_evaluate=5,
                     num_sampling_step=25,
@@ -167,8 +167,8 @@ PID_V1PT5_TEACHER_FLUX2_H1024_D4_FIX_BACKBONE_RES_2048: LazyDict = LazyDict(
                 ),
                 **get_every_n_callbacks_at_step(
                     step_name="46step_res2048",
-                    fix_batch_fp="assets/pid_callback_assets/flux2/46step/2048/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/flux2/46step/2048",
+                    fix_batch_fp="../experiment/pid-callback-assets/flux2/46step/2048/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/flux2/46step/2048",
                     guidance_draw_sample=[2.75, 5.0],
                     guidance_evaluate=5.0,
                     num_sampling_step=25,
@@ -183,7 +183,7 @@ PID_V1PT5_TEACHER_FLUX2_H1024_D4_FIX_BACKBONE_RES_2048: LazyDict = LazyDict(
 # Requires generating 1024 resolution assets first. Run the following command:
 # RESOLUTIONS="1024" bash pid/_src/dataprep/fix_batch_generation/generate_callback_assets.sh flux2
 """
-PYTHONPATH=. torchrun --nproc_per_node=2 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=2 --master_port=12341 -m training.train \
       --config=pid/_src/configs/pid_training/config.py \
       -- experiment="pid_v1pt5_teacher_flux2_h1024_d4_fix_backbone_res_2048_to_3840_debug"
 """
@@ -207,8 +207,8 @@ PID_V1PT5_TEACHER_FLUX2_H1024_D4_FIX_BACKBONE_RES_2048_TO_3840: LazyDict = LazyD
         trainer=dict(
             callbacks=dict(
                 **get_every_n_callbacks_fullstep(
-                    fix_batch_fp="assets/pid_callback_assets/flux2/full_step/4096/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/flux2/full_step/4096",
+                    fix_batch_fp="../experiment/pid-callback-assets/flux2/full_step/4096/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/flux2/full_step/4096",
                     guidance_draw_sample=[2.75, 5.0],
                     guidance_evaluate=5,
                     num_sampling_step=25,
@@ -218,8 +218,8 @@ PID_V1PT5_TEACHER_FLUX2_H1024_D4_FIX_BACKBONE_RES_2048_TO_3840: LazyDict = LazyD
                 ),
                 **get_every_n_callbacks_at_step(
                     step_name="46step_res4096",
-                    fix_batch_fp="assets/pid_callback_assets/flux2/46step/4096/fix_batch_{:04d}.pt",
-                    fix_batch_dir="assets/pid_callback_assets/flux2/46step/4096",
+                    fix_batch_fp="../experiment/pid-callback-assets/flux2/46step/4096/fix_batch_{:04d}.pt",
+                    fix_batch_dir="../experiment/pid-callback-assets/flux2/46step/4096",
                     guidance_draw_sample=[2.75, 5.0],
                     guidance_evaluate=5.0,
                     num_sampling_step=25,

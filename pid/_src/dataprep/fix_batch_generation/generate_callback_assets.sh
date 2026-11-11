@@ -23,7 +23,7 @@ set -euo pipefail
 
 DEFAULT_PROMPTS_FILE=pid/_src/dataprep/prompts/prompts_harder_cases.txt
 PROMPTS_FILE=${PROMPTS_FILE:-$DEFAULT_PROMPTS_FILE}
-OUTPUT_ROOT=${OUTPUT_ROOT:-assets/pid_callback_assets}
+OUTPUT_ROOT=${OUTPUT_ROOT:-../experiment/pid-callback-assets}
 NUM_IMAGES_PER_PROMPT=${NUM_IMAGES_PER_PROMPT:-1}
 RESOLUTIONS=(${RESOLUTIONS:-512})
 SEED=${SEED:-42}

@@ -17,14 +17,14 @@ The training configuration entry point is `pid/_src/configs/pid_training/config.
 Start a four-GPU training job from the repository root:
 
 ```bash
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
   --config=pid/_src/configs/pid_training/config.py \
   -- experiment="pixeldit_text_to_image_finetune_res_2048"
 ```
 
 This command can be divided into three parts:
 
-1. `torchrun ... -m scripts.train` launches distributed training through the specified entry point;
+1. `torchrun ... -m training.train` launches distributed training through the specified entry point;
 2. `--config=.../config.py` specifies the Python root configuration module;
 3. everything after the standalone `--` is interpreted as Hydra overrides, and `experiment=...` selects an experiment configuration.
 
@@ -36,7 +36,7 @@ The standalone `--` **must not be omitted**. The project's configuration wrapper
 The configuration flows from the command line to the training objects as follows:
 
 ```text
-scripts/train.py
+training/train.py
   -> Import the module specified by --config and call make_config()
   -> Register base configuration groups and import experiment modules to register experiments
   -> Use hydra.compose() to process defaults and command-line overrides
@@ -54,7 +54,7 @@ Relevant implementation files:
 | `pid/_src/configs/common/defaults/` | Shared configurations for optimizers, schedulers, checkpoints, and other components |
 | `pid/_src/configs/pid_training/experiment_pixeldit_finetune/finetune.py` | PixelDiT fine-tuning experiment configurations and registration |
 | `pid/_ext/imaginaire/utils/config_helper.py` | Hydra composition, overrides, and attrs configuration reconstruction |
-| `scripts/train.py` | Argument parsing, configuration loading, and training startup |
+| `training/train.py` | Argument parsing, configuration loading, and training startup |
 
 ## Root Configuration and `defaults`
 
@@ -183,7 +183,7 @@ defaults=[
 The command line can select configuration groups and override fields in the final configuration at the same time. A command-line field override takes precedence over values set by the experiment.
 
 ```bash
-PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m scripts.train \
+PYTHONPATH=. torchrun --nproc_per_node=4 --master_port=12341 -m training.train \
   --config=pid/_src/configs/pid_training/config.py \
   -- \
   experiment=pixeldit_text_to_image_finetune_res_2048 \
@@ -248,4 +248,4 @@ Whether an experiment can be selected depends on its module being imported and e
 - **An override path has no effect**: make sure that you are using the final `package` path. For example, network fields are located under `model.config.net`, not `net`.
 - **Experiment values are overridden by component defaults**: check the position of `_self_`. Place `_self_` at the end of the experiment `defaults` when the experiment body should take effect last.
 - **Adding a top-level field fails**: the final result is reconstructed as a structured attrs configuration, so arbitrary undeclared top-level fields may be rejected. Prefer overriding existing fields, or extend the `Config` definition first.
-- **Hydra multirun is used by mistake**: this project does not expose the usual `-m/--multirun` options provided by `@hydra.main`; in this command, `-m scripts.train` is torchrun's module-launch option, not a Hydra multirun flag.
+- **Hydra multirun is used by mistake**: this project does not expose the usual `-m/--multirun` options provided by `@hydra.main`; in this command, `-m training.train` is torchrun's module-launch option, not a Hydra multirun flag.

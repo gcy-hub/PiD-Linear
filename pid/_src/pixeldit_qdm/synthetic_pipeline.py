@@ -10,7 +10,7 @@ from pathlib import Path
 from pid._src.common.data import atomic_json, sha256_file
 from pid._src.common.text_cache import TextCacheReader
 from pid._src.vdn_pid.training import parse_args
-from scripts.repeat_pid_vdn import launch, read_json
+from training.repeat_pid_vdn import launch, read_json
 from .synthetic_data import prepare_dataset
 
 REPO=Path(__file__).resolve().parents[3]

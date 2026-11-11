@@ -1,7 +1,5 @@
 # Shared framework contract
 
-C owns `attention_framework/`, `configs/default.yaml`, package discovery and this contract. Shared imports come from `attention_framework.contracts` and `attention_framework.config`. A owns `algorithms/` and algorithm YAML; M owns `models/` and model YAML; D owns `data/`, data YAML and `download/`; T owns `training/` and training YAML; V owns tests, thin scripts and user documentation. Package `__init__.py` files and representative YAMLs are initial shared setup; their assigned writers extend them. No algorithm, model loading, encoder or training implementation is supplied by C.
-
 ## Attention boundary (A ↔ M)
 
 Concrete declarations are in `attention_framework/contracts.py`:
@@ -86,9 +84,9 @@ It yields `EncodedBatch` with cache/online resolution performed in the training 
 
 ## Configuration and entry points
 
-`compose_config(model_config: str, algorithm_config: str, training_config: str, data_config: str, overrides: list[str] | None = None) -> DictConfig` composes shared defaults → model → algorithm → training → data → dotlist, resolves interpolations, validates and resolves runtime paths. Layer maps replace family-specific defaults before the merge. OmegaConf struct mode rejects unknown keys. Access CLEAR settings with `cfg.algorithm["clear"]` because `clear` is also a DictConfig method. A/M/D/T may extend **their section schemas in `configs/default.yaml` through C integration** if implementation requires additional fields; they must report the exact additions with their delivery rather than silently accepting unknown overrides.
+`compose_config(model_config: str, algorithm_config: str, training_config: str, data_config: str, overrides: list[str] | None = None) -> DictConfig` composes shared defaults → model → algorithm → training → data → dotlist, resolves interpolations, validates and resolves runtime paths. Layer maps replace family-specific defaults before the merge. OmegaConf struct mode rejects unknown keys. Access CLEAR settings with `cfg.algorithm["clear"]` because `clear` is also a DictConfig method. New fields require explicit declarations in `configs/default.yaml`.
 
-`config_parser() -> argparse.ArgumentParser` and `config_from_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, DictConfig]` are exported in `attention_framework.config`. T's `training.run` reuses these: `--print-config` prints `OmegaConf.to_yaml(cfg, resolve=True)` and exits before loading models/devices/data. Until T lands, the standalone entry is:
+`config_parser() -> argparse.ArgumentParser` and `config_from_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, DictConfig]` are exported in `attention_framework.config`. T's `training.run` reuses these: `--print-config` prints `OmegaConf.to_yaml(cfg, resolve=True)` and exits before loading models/devices/data. The standalone configuration entry is:
 
 ```bash
 python -m attention_framework.config --print-config \
@@ -101,10 +99,4 @@ python -m attention_framework.config --print-config \
 
 All 12 model/algorithm pairs and 21 strategy combinations are represented by `COMBINATIONS`; CLEAR+VDN is rejected. Derived fields are `global_batch_size`, `selected_layers`, `layer_specs`, `feature_tap`, `feature_layers`; callers never override these. `runtime.gpus` is requested world size; T verifies it matches the launched distributed world size. Per-GPU batch × world size × accumulation gives global batch. Model resource values may be local paths or resource identities; model loading is offline and must never implicitly download. Null resources in representative defaults require explicit local resources for real training.
 
-Config resource YAMLs ship through the `configs` package; package discovery includes `attention_framework`, models, algorithms, data, training and download, preserving `pid`. Family files are representative native architectures, not weight downloads. New YAML fields and real resource defaults remain assigned to their domain writers.
-
-## CPU reference and next dependencies
-
-Run `CUDA_VISIBLE_DEVICES='' python plans/attention-framework/checks/contract_cpu.py`. It checks all 21 valid combinations/12 pairs, invalid overrides/cache/layers/CLEAR+VDN, derived paths/batch/taps and package discovery. Existing numeric references: rectangular 2×3 scans are `[0,1,2,3,4,5]`, reverse, `[0,3,1,4,2,5]`, and `[5,2,4,1,3,0]`; inverse permutations recover input. Existing QDM scalar solve with K=Q=beta=1 and V=[2,4] gives outputs `[2,2]` and query gradients `[2,2]`. Existing CLEAR radius-1 text-first packed samples `((1,2,1),(1,1,0))`, V=[2,4,8,16], zero QK gives `[14/3,3,5,16]`; the last sample remains isolated. Region padding round-trips the rectangular input with six valid tokens. The scan function is extracted with AST solely to avoid importing FLA on CPU; KDA recurrence is reserved for A's real dependency checks.
-
-A/M/D/T/V implement these entry signatures from this commit in separate worktrees. The integration task joins them and addresses concrete interface discrepancies. GPU kernels, real encoders, teacher update isolation, DDP/checkpoint lifecycle and end-to-end training are downstream acceptance dependencies; this contract check does not claim they are implemented or validated.
+Config resource YAMLs ship through the `configs` package; package discovery includes `attention_framework`, models, algorithms, data, training and download, preserving `pid`. Family files are representative native architectures, not weight downloads. Real resource paths are supplied by the local configuration.
