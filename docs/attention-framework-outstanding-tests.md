@@ -41,3 +41,5 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 ACCEPTANCE_REPORT_DIR="$REPORT" \
 优先项缓存重测使用 `gpu-0330/flux3/cache` 的 24 条真实验收样本。CPU 预检逐条读取图文张量并核对完整 metadata，24 条全部匹配，未加载 TE/VAE。该小型验收缓存独立于后续生产缓存任务。重测资源 JSON 需设置 `cache.image=true`、`cache.text=true` 以及该缓存根目录。在线模式的四种缓存/编码器行为已有 family 检查覆盖，完整训练闭环按缓存模式测量。
 
 `15a007b` 全层缓存模式仍在首次 student forward 的 FP32 trainable projection → BF16 cast 时 CUDA OOM（申请 18 MiB，GPU0 可用 8.81 MiB），未完成训练更新；`priority-flux3-kda-clear-cached-15a007b/acceptance.json`。下一次保持全部层与精度/优化器设置，启用已有 `runtime.activation_cpu_offload=true`，检验支持的显存选项能否完成完整闭环。
+
+`129b969` 缓存加 activation offload 仍在首次 forward 的投影 cast OOM；四 rank 均未完成 backward。`27c0935` 修复 FLUX3/cross_scan_kda/CLEAR/BF16/Prodigy 的存储：复制计算参数使用 BF16，ZeRO 本地 FP32 master/状态维持不变，`fp32_updates=true`。660 个选定张量合计 2,547,178,392 元素，计算存储每 rank 减少 5,094,356,784 字节（4.74449 GiB），这是结构计算，不是 CUDA 峰值。CPU 存储策略/teacher 隔离及两 rank ZeRO 所有权、FP32 微小更新、精确下一步恢复通过；详见 `gpu-memory-repair/delivery.md`。原生 CUDA 完整闭环尚未验证该修复。集成时 GPU0–3 被外部 vLLM 工作负载占用，未启动重测，也未停止他人进程。释放四卡后按上方优先命令使用缓存加 activation offload 的实际资源 JSON 继续。
