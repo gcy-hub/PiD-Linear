@@ -74,6 +74,11 @@ def build_optimizer(config, roles, stage):
         groups.append(dict(params=[r.parameter for r in roles if r.role == role], role=role))
     options = dict(lr=config.training.lr, weight_decay=config.training.weight_decay)
     if config.training.optimizer == 'prodigy':
+        if (stage == 'clear' and config.model.family == 'flux3'
+                and config.algorithm.name == 'cross_scan_kda' and config.runtime.dtype == 'bfloat16'):
+            # ZeRO owns the FP32 update history; replicated parameters are compute weights.
+            for r in roles:
+                r.parameter.data = r.parameter.data.to(torch.bfloat16)
         cls = MasterProdigy
         options.update(use_bias_correction=True, safeguard_warmup=True,
                        fsdp_in_use=shard)
