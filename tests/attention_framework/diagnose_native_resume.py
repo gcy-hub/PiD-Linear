@@ -15,6 +15,7 @@ from omegaconf import OmegaConf
 from training import checkpoint, engine
 from training.optim import local_optimizer
 from check_native_resume import equal
+from deterministic_training import configure
 
 
 def snapshot(value):
@@ -28,6 +29,7 @@ def snapshot(value):
 
 
 def worker(config, resume):
+    configure()
     import models
     cfg = OmegaConf.load(config)
     state = checkpoint.read(resume, int(os.environ['RANK']), cfg.runtime.gpus)
@@ -39,6 +41,7 @@ def worker(config, resume):
     build_model, build_optimizer = models.build_model, engine.build_optimizer
     counters = {}
     active = {}
+    gradient_hooks = []
 
     def record(event, value):
         key = (step, event)
@@ -70,6 +73,12 @@ def worker(config, resume):
         return adapter
 
     def optimizer(config, roles, stage):
+        for hook in gradient_hooks:
+            hook.remove()
+        gradient_hooks.clear()
+        for role in roles:
+            gradient_hooks.append(role.parameter.register_hook(
+                lambda grad, name=role.name: record('localgrad.' + name, grad)))
         opt, sched = build_optimizer(config, roles, stage)
         update = opt.step
 
@@ -102,7 +111,7 @@ def launch(config, resume, trace=False):
     if trace:
         command += [str(Path(__file__).resolve()), '--worker-config', str(config)]
     else:
-        command += ['-m', 'training.run', '--worker-config', str(config)]
+        command += [str(Path(__file__).with_name('deterministic_training.py')), '--worker-config', str(config)]
     if resume:
         command += ['--resume', str(resume)]
     subprocess.run(command, cwd=ROOT, check=True)
@@ -113,8 +122,9 @@ def compare(left, right):
     def order(path):
         step, event, index, rank = path.stem.split('-')
         phase = {'begin': 0, 'input': 1, 'teacher': 2, 'student': 3,
-                 'preupdate': 1000000, 'postupdate': 1000001}[event]
-        return int(step), phase + 3 * int(index), rank
+                 'preupdate': 1000000, 'postupdate': 1000001}.get(event, 500000)
+        assert event in ('begin', 'input', 'teacher', 'student', 'preupdate', 'postupdate') or event.startswith('localgrad.')
+        return int(step), phase + 3 * int(index), event, rank
 
     files = sorted(left.glob('*.pt'), key=order)
     assert files and {p.name for p in files} == {p.name for p in right.glob('*.pt')}

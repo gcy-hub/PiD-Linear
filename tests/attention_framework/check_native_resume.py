@@ -1,4 +1,4 @@
-"""Native four-rank training-only exact resume regression from a resolved config."""
+"""Native four-rank exact resume regression with deterministic execution controls."""
 import argparse
 import json
 import subprocess
@@ -46,7 +46,8 @@ def main():
         resume = None
         while True:
             command = [sys.executable, '-m', 'torch.distributed.run', '--standalone',
-                       '--nproc_per_node=4', '-m', 'training.run', '--worker-config', str(resolved)]
+                       '--nproc_per_node=4', str(Path(__file__).with_name('deterministic_training.py')),
+                       '--worker-config', str(resolved)]
             if resume:
                 command += ['--resume', str(resume)]
             subprocess.run(command, cwd=ROOT, check=True)
@@ -60,7 +61,8 @@ def main():
             equal(a[key], b[key], f'rank{rank}/{key}')
         print(f'rank {rank}: native weights/optimizer/scheduler/progress/RNG exactly equal', flush=True)
     (args.output / 'result.json').write_text(json.dumps(dict(status='passed', ranks=4,
-        config=str(args.config), comparison='torch.equal; no tolerance')))
+        config=str(args.config), comparison='torch.equal; no tolerance',
+        deterministic_algorithms=True, cublas_workspace_config=':4096:8')))
 
 
 if __name__ == '__main__':
