@@ -1,5 +1,7 @@
 # 验收记录与待测项
 
+2026-11-11 09:24 用户明确取消继续测试，要求直接提交并推送。此发布使用用户测试豁免，不代表 FLUX3 原生完整闭环、内存峰值或全矩阵通过。资源等待队列及其专属 minute/reboot cron 已取消；保留全部已有结果和未验证项目，后续测试按本记录恢复。
+
 2026-11-11 用户调整交付范围：先提交代码及本记录，优先完成 **FLUX3 / cross_scan_kda / CLEAR** 的真实四卡训练、保存、精确恢复和生成；该项通过后推送。其他模型与组合的未完成验收继续保留，不阻塞此次交付。全矩阵控制器仍按完整范围报告，不用其历史失败报告冒充全矩阵通过。
 
 运行资料位于本机 `attention-framework-refactor/reports/`。每个 acceptance.json 的 `evidence_commit`、`evidence_report`、`reused_via_report` 保留原始版本与来源。测试资源、日志、checkpoint 和缓存不入 Git。
