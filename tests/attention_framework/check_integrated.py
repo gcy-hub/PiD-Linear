@@ -154,7 +154,7 @@ def cycle(spec, family, out):
             stages = []
             while True:
                 argv = [sys.executable, '-m', 'torch.distributed.run', '--standalone', '--nproc_per_node=4',
-                        '-m', 'training.run', '--worker-config', str(resolved)]
+                        str(Path(__file__).with_name('deterministic_training.py')), '--worker-config', str(resolved)]
                 if resume:
                     argv += ['--resume', str(resume)]
                 subprocess.run(argv, check=True, cwd=ROOT)
