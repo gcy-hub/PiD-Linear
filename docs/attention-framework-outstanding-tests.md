@@ -39,3 +39,5 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 ACCEPTANCE_REPORT_DIR="$REPORT" \
 重测其他项时用 `--scenario pid_cycle` / `flux2_cycle` / `flux3_cycle`，通过 `--algorithm` 选择四种算法，通过 `--strategy vdn` 或 `clear` 选择有效策略；CLEAR attention 不支持 VDN。不传策略会执行 VDN 与 CLEAR 两种闭环。完整控制器入口和绑定方法见 `attention-framework-acceptance.md`。每次保留版本、命令、实际配置、结果与来源；中止、blocked 和未执行均不记为通过。
 
 优先项缓存重测使用 `gpu-0330/flux3/cache` 的 24 条真实验收样本。CPU 预检逐条读取图文张量并核对完整 metadata，24 条全部匹配，未加载 TE/VAE。该小型验收缓存独立于后续生产缓存任务。重测资源 JSON 需设置 `cache.image=true`、`cache.text=true` 以及该缓存根目录。在线模式的四种缓存/编码器行为已有 family 检查覆盖，完整训练闭环按缓存模式测量。
+
+`15a007b` 全层缓存模式仍在首次 student forward 的 FP32 trainable projection → BF16 cast 时 CUDA OOM（申请 18 MiB，GPU0 可用 8.81 MiB），未完成训练更新；`priority-flux3-kda-clear-cached-15a007b/acceptance.json`。下一次保持全部层与精度/优化器设置，启用已有 `runtime.activation_cpu_offload=true`，检验支持的显存选项能否完成完整闭环。
