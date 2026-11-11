@@ -137,13 +137,13 @@ def family_check(spec, family, out):
     print(f'{family}: four native algorithms, real encoder/cache parity and component absence passed')
 
 
-def cycle(spec, family, out):
+def cycle(spec, family, out, algorithm="sliding_qdm", strategies=("vdn", "clear")):
     from training.checkpoint import latest, read
-    for strategy in ('vdn', 'clear'):
+    for strategy in strategies:
         states = []
         for label, every in (('continuous', 100), ('resumed', 1)):
             root = out / strategy / label
-            cfg = config(spec, family, strategy=strategy, extra=[f'paths.output={root}',
+            cfg = config(spec, family, algorithm=algorithm, strategy=strategy, extra=[f'paths.output={root}',
                 'runtime.gpus=4', 'training.steps=4', 'training.accumulation=2',
                 'training.vdn.a1.steps=2', 'training.vdn.a2.steps=2', 'training.vdn.b.steps=2',
                 f'checkpoint.every={every}', 'validation.every=2', 'validation.steps=2'])
@@ -188,7 +188,7 @@ def cycle(spec, family, out):
                                               'data', 'cache', 'runtime', 'checkpoint', 'validation', 'paths')}
                         subprocess.run([sys.executable, '-m', 'training.run',
                             '--model-config', spec['models'][family],
-                            '--algorithm-config', str(ROOT / 'configs/algorithms/sliding_qdm.yaml'),
+                            '--algorithm-config', str(ROOT / f'configs/algorithms/{algorithm}.yaml'),
                             '--training-config', str(ROOT / f'configs/training/{strategy}.yaml'),
                             '--data-config', spec['data'], *leaves(public)], check=True, cwd=ROOT)
                         assert (resume / 'validated.json').is_file()
@@ -200,7 +200,7 @@ def cycle(spec, family, out):
         for continuous, resumed in zip(*states):
             for key in ('weights', 'optimizer', 'scheduler', 'progress', 'rng'):
                 close(continuous[key], resumed[key], True)
-    print(f'{family}: real four-rank CLEAR/VDN stages, save/resume and standalone generation passed')
+    print(f'{family}/{algorithm}/{strategies}: real four-rank updates, exact save/resume and standalone generation passed')
 
 
 def delivered_cpu():
@@ -218,6 +218,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--resources', type=Path, required=True)
     parser.add_argument('--scenario', required=True)
+    parser.add_argument('--algorithm', choices=ALGORITHMS, default='sliding_qdm')
+    parser.add_argument('--strategy', choices=('vdn', 'clear'))
     args = parser.parse_args()
     spec = json.loads(args.resources.read_text())
     out = Path(os.environ['ACCEPTANCE_REPORT_DIR'])
@@ -244,7 +246,8 @@ def main():
         torch.cuda.reset_peak_memory_stats()
         family_check(spec, name, out)
     elif name.endswith('_cycle'):
-        cycle(spec, name.removesuffix('_cycle'), out)
+        cycle(spec, name.removesuffix('_cycle'), out, algorithm=args.algorithm,
+              strategies=(args.strategy,) if args.strategy else ('vdn', 'clear'))
     else:
         raise ValueError(f'No integrated runner for {name}')
     if torch.cuda.is_initialized():
