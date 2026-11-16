@@ -1,0 +1,27 @@
+training:
+  strategy: vdn
+  batch_size: 16
+  accumulation: 1
+  optimizer: adamw
+  scheduler: cosine
+  lr: 0.0001
+  weight_decay: 0.01
+  fp32_updates: true
+  wavelet: {weight: 0.5, c_min: 0.2, c_max: 1.0, alpha: 1.0, beta: 1.0, gamma: 5.0}
+  vdn:
+    start_stage: a1
+    a1: {steps: 500, warmup: 50, objective: relative_attention_mse, checkpoint_every: 500, validation_every: 500}
+    a2: {steps: 1000, warmup: 50, objective: teacher, checkpoint_every: 1000, validation_every: 1000}
+    b: {steps: 50000, warmup: 200, objective: teacher, checkpoint_every: 5000, validation_every: 5000}
+    lora: {rank: 64, alpha: 64}
+runtime:
+  gpus: 8
+  dtype: bfloat16
+  gradient_checkpointing: true
+  optimizer_sharding: true
+  activation_cpu_offload: false
+  optimizer_cpu_offload: false
+cache: {image: false, text: false, root: null}
+checkpoint: {every: 0, seconds: 0, resume: null}
+validation: {every: 0, steps: 50, seed: 42, count: 10}
+logging: {backend: swanlab, mode: offline, project: flux2-sliding11-wavelet, name: null}

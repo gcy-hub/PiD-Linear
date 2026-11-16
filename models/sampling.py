@@ -74,33 +74,52 @@ def _sample_batch(adapter, batch, *, vae, steps, seed):
 
 
 @torch.no_grad()
-def sample(adapter, config, *, output_dir: Path) -> list[Path]:
-    """Write one seeded PNG from the first configured dataset sample.
-
-    Uses data's native online encoders for validation, independent of training
-    caches. The caller supplies an adapter with restored checkpoint weights.
-    Sampling uses positive text only (CFG=1); FLUX2 keeps embedded guidance=4.
-    """
+def sample(adapter, config, *, output_dir: Path, encoder=None, dataset=None,
+           rank=0, world_size=1) -> list[Path]:
+    """Write fixed validation samples, partitioned across independent ranks."""
     from data.dataset import ImageDataset
     from data.preprocess import load_pixels
     from data.encoders import build_encoder
-    dataset = ImageDataset(config.data.manifest or config.paths.dataset, config.data.buckets, config.data.min_size)
-    row, size = dataset.samples[0], dataset.sizes[0]
-    grid = (size[1]//16, size[0]//16)
+    import json
+    dataset = dataset or ImageDataset(config.validation.manifest or config.data.manifest or config.paths.dataset,
+                                      config.validation.get('buckets') or config.data.buckets, config.data.min_size)
+    count = config.validation.count
+    if len(dataset) < count:
+        raise ValueError(f'Validation requires {count} samples, found {len(dataset)}')
     device = next(adapter.parameters()).device
-    encoder = build_encoder(config, device=device, image=True, text=True)
-    pixels = load_pixels(row.image_path, size)[None]
-    batch = EncodedBatch((row.sample_id,), adapter.family,
-                         encoder.encode_image(pixels, (grid,)), encoder.encode_text([row.caption]), (grid,))
-    was_training = adapter.training
-    adapter.eval()
-    try:
-        generated = _sample_batch(adapter, batch, vae=encoder.vae, steps=config.validation.steps, seed=config.validation.seed)
-    finally:
-        adapter.train(was_training)
-    rgb = ((generated[0].float().clamp(-1, 1)+1)*127.5).round().byte().permute(1, 2, 0).cpu().numpy()
+    encoder = encoder or build_encoder(config, device=device, image=True, text=True)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / 'sample.png'
-    Image.fromarray(rgb).save(path)
-    return [path]
+    was_training = adapter.training
+    adapter.eval()
+    paths = []
+    try:
+        for index in range(rank, count, world_size):
+            path = output_dir / f'{index:02d}.png'
+            metadata = path.with_suffix('.json')
+            if path.exists() and metadata.exists():
+                paths.append(path)
+                continue
+            row, size = dataset.samples[index], dataset.sizes[index]
+            grid = (size[1]//16, size[0]//16)
+            pixels = load_pixels(row.image_path, size)[None]
+            batch = EncodedBatch((row.sample_id,), adapter.family,
+                                 encoder.encode_image(pixels, (grid,)), encoder.encode_text([row.caption]), (grid,))
+            seed = config.validation.seed + index
+            with torch.random.fork_rng(devices=[device.index or 0] if device.type == 'cuda' else []), \
+                    torch.autocast(device.type, dtype=getattr(torch, config.runtime.dtype),
+                                   enabled=config.runtime.dtype != 'float32'):
+                generated = _sample_batch(adapter, batch, vae=encoder.vae, steps=config.validation.steps, seed=seed)
+            rgb = ((generated[0].float().clamp(-1, 1)+1)*127.5).round().byte().permute(1, 2, 0).cpu().numpy()
+            temporary = path.with_suffix('.partial')
+            Image.fromarray(rgb).save(temporary, format='PNG')
+            temporary.replace(path)
+            temporary = metadata.with_suffix('.partial')
+            temporary.write_text(json.dumps(dict(sample_id=row.sample_id, image_path=row.image_path,
+                                                caption=row.caption, size=size, seed=seed,
+                                                steps=config.validation.steps, cfg=1.0)))
+            temporary.replace(metadata)
+            paths.append(path)
+    finally:
+        adapter.train(was_training)
+    return paths

@@ -69,7 +69,8 @@ def _block_mask(layout,radius,down_factor,device,window_shape='circle',kernel_si
 @lru_cache(maxsize=1)
 def _kernel():
     from torch.nn.attention.flex_attention import flex_attention
-    return torch.compile(flex_attention,dynamic=False)
+    # Buckets and text lengths vary; eager FlexAttention materializes N x N scores.
+    return torch.compile(flex_attention, dynamic=True, fullgraph=True)
 
 
 class ClearAttention(nn.Module):
@@ -113,6 +114,8 @@ class ClearAttention(nn.Module):
         if self.down_factor>1:
             k=torch.cat((k,self._pool(k,layout)),2);v=torch.cat((v,self._pool(v,layout)),2)
         if q.device.type=='cuda':
+            # Avoid strided Q/K/V kernels failing during checkpoint recomputation.
+            q,k,v=(tensor.contiguous() for tensor in (q,k,v))
             # Ampere's 99 KiB shared-memory limit cannot fit PyTorch 2.10's
             # default 128x128 head-dim128 kernel with distinct Q/K/V tensors.
             # Keep the exact sparse computation and use smaller native tiles.

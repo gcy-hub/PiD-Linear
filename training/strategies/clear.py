@@ -5,10 +5,12 @@ from torch.nn.functional import mse_loss
 ROLES = {'branch', 'pooling', 'local_gate', 'image_qkvo'}
 
 
-def objective(student, teacher, target, layers, weights):
+def objective(student, teacher, target, layers, weights, *, metrics=None):
     if not layers or any(k not in student.features or k not in teacher.features for k in layers):
         raise ValueError('Missing CLEAR feature layers')
     feature = torch.stack([mse_loss(student.features[k].float(), teacher.features[k].detach().float()) for k in layers]).mean()
-    return (weights.fm * mse_loss(student.prediction.float(), target.float())
-            + weights.prediction * mse_loss(student.prediction.float(), teacher.prediction.detach().float())
-            + weights.feature * feature)
+    fm = mse_loss(student.prediction.float(), target.float())
+    prediction = mse_loss(student.prediction.float(), teacher.prediction.detach().float())
+    if metrics is not None:
+        metrics.update(fm=fm.detach(), prediction_mse=prediction.detach(), feature=feature.detach())
+    return weights.fm * fm + weights.prediction * prediction + weights.feature * feature

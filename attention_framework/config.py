@@ -1,6 +1,7 @@
 """OmegaConf composition and boundary validation for all framework entry points."""
 import argparse
 from pathlib import Path
+import math
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -59,6 +60,30 @@ def compose_config(model_config: str, algorithm_config: str, training_config: st
 
 
 def validate_config(cfg: DictConfig) -> None:
+    start = cfg.training.vdn.get('start_stage')
+    if start not in (None, 'a1', 'a2', 'b'):
+        raise ValueError('VDN start_stage must be a1, a2 or b')
+    for stage in ('a1', 'a2', 'b'):
+        phase = cfg.training.vdn[stage]
+        if type(phase.steps) is not int or phase.steps < 1:
+            raise ValueError(f'training.vdn.{stage}.steps must be a positive integer')
+        if type(phase.warmup) is not int or phase.warmup < 0:
+            raise ValueError(f'training.vdn.{stage}.warmup must be a nonnegative integer')
+        for key in ('checkpoint_every', 'validation_every'):
+            value = phase.get(key)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f'training.vdn.{stage}.{key} must be a nonnegative integer or null')
+    logging = cfg.get('logging')
+    if logging:
+        if logging.get('backend', 'none') not in ('none', 'swanlab'):
+            raise ValueError('logging.backend must be none or swanlab')
+        if logging.get('mode', 'offline') not in ('offline', 'online', 'local', 'disabled'):
+            raise ValueError('Invalid logging.mode for SwanLab')
+    wavelet = cfg.training.wavelet
+    if (any(not math.isfinite(float(v)) for v in wavelet.values())
+            or wavelet.weight < 0 or not 0 < wavelet.c_min <= wavelet.c_max
+            or wavelet.gamma <= 0 or wavelet.alpha < 0 or wavelet.beta < 0):
+        raise ValueError('Invalid SNR-HW parameters')
     if (cfg.model.family, cfg.algorithm.name, cfg.training.strategy) not in COMBINATIONS:
         raise ValueError('Unsupported model/algorithm/strategy combination (CLEAR attention requires CLEAR strategy)')
     groups = {'pid': ('patch',), 'flux2': ('double', 'single'), 'flux3': ('early_image', 'joint')}
