@@ -61,6 +61,44 @@ class AttentionProjection(nn.Module):
         return out + self.lora(x).to(out.dtype) if self.adapters_enabled else out
 
 
+def fuse_lora_projections(module):
+    """Fold trained attention projections into ordinary linear layers for inference."""
+    from pid._src.vdn_pid.lora import LoRALinear
+
+    projections = [
+        ((name.rsplit(".", 1) if "." in name else ("", name)), projection)
+        for name, projection in module.named_modules()
+        if isinstance(projection, (AttentionProjection, LoRALinear))
+    ]
+    for (parent_name, child_name), projection in projections:
+        base = projection.base
+        with torch.no_grad():
+            weight = base.weight.detach().clone()
+            if isinstance(projection, AttentionProjection):
+                delta = torch.mm(projection.lora_B, projection.lora_A) * projection.scale
+                weight[:projection.rows, :projection.columns] = (
+                    projection.train_weight.to(weight.dtype) + delta.to(weight.dtype)
+                )
+            else:
+                delta = torch.cat(
+                    [torch.mm(b, a) for a, b in zip(projection.A, projection.B)], dim=0
+                )
+                weight.add_(delta.to(weight.dtype), alpha=projection.alpha / projection.rank)
+            bias = None if base.bias is None else base.bias.detach().clone()
+        fused = nn.Linear(
+            base.in_features, base.out_features,
+            bias=bias is not None, device=weight.device, dtype=weight.dtype,
+        )
+        with torch.no_grad():
+            fused.weight.copy_(weight)
+            if bias is not None:
+                fused.bias.copy_(bias)
+        fused.requires_grad_(False)
+        parent = module.get_submodule(parent_name) if parent_name else module
+        setattr(parent, child_name, fused)
+    return len(projections)
+
+
 @contextmanager
 def original_projections(module):
     projections = [m for m in module.modules() if isinstance(m, AttentionProjection)]
