@@ -67,12 +67,28 @@ def sliding_attention(q, k, v, tk, tv, grid, kernel=11, *, text_valid=None,
     h, w = map(int, grid)
     if kernel < 1 or kernel % 2 != 1 or query_chunk < 1 or h*w != q.shape[1]:
         raise ValueError('Sliding attention needs an odd kernel, positive chunk and explicit matching grid')
-    if backend not in ('natten', 'reference'):
-        raise ValueError('Sliding backend must be natten or reference')
+    if backend not in ('flex', 'natten', 'reference'):
+        raise ValueError('Sliding backend must be flex, natten or reference')
     if text_valid is None:
         text_valid = torch.ones(q.shape[0], tk.shape[1], device=q.device, dtype=torch.bool)
     if tuple(text_valid.shape) != tuple(tk.shape[:2]):
         raise ValueError('Text validity must have shape [batch, text_tokens]')
+    if backend == 'flex':
+        if (q.is_cuda and not torch.is_grad_enabled() and q.shape[-1] in (32, 64, 128)
+                and q.dtype == k.dtype == v.dtype == tk.dtype == tv.dtype
+                and q.dtype in (torch.bfloat16, torch.float16)):
+            from .sliding_fast import sliding_forward
+            return sliding_forward(q, k, v, tk, tv, (h, w), kernel, text_valid.bool())
+        if text_valid.all():
+            from algorithms.local import ClearAttention
+            from attention_framework.contracts import AttentionLayout
+            length = tk.shape[1]
+            layout = AttentionLayout(((h, w, length),), text_first=True)
+            image = ClearAttention(window_shape='square', kernel_size=kernel)(
+                q.transpose(1, 2), torch.cat((tk, k), 1).transpose(1, 2),
+                torch.cat((tv, v), 1).transpose(1, 2), layout, query_start=length)
+            return image.transpose(1, 2)
+        backend = 'reference'
     if backend == 'reference' or min(h, w) < kernel:
         ids = torch.arange(h*w, device=q.device)
         return _queries(q, k, v, tk, tv, ids, (h, w), kernel, text_valid, query_chunk)
@@ -110,10 +126,19 @@ def local_attention(module, x, y, qkv, tqkv, pos_img, pos_txt, grid, attn_mask=N
     heads, d = orig.num_heads, orig.head_dim
     q, k, v = qkv
     tq, tk, tv = tqkv
-    q, k = apply_rotary_emb(orig.q_norm_x(q), orig.k_norm_x(k), freqs_cis=pos_img)
-    tq, tk = orig.q_norm_y(tq), orig.k_norm_y(tk)
-    if pos_txt is not None:
-        tq, tk = apply_rotary_emb(tq, tk, freqs_cis=pos_txt)
+    fast = (q.is_cuda and not torch.is_grad_enabled()
+            and q.dtype in (torch.float16, torch.bfloat16)
+            and q.shape[-1] in (32, 64, 128)
+            and module.sliding_backend == 'flex')
+    if fast:
+        from .sliding_points import norm_rope
+        q, k = norm_rope(q, k, orig.q_norm_x, orig.k_norm_x, pos_img)
+        tq, tk = norm_rope(tq, tk, orig.q_norm_y, orig.k_norm_y, pos_txt)
+    else:
+        q, k = apply_rotary_emb(orig.q_norm_x(q), orig.k_norm_x(k), freqs_cis=pos_img)
+        tq, tk = orig.q_norm_y(tq), orig.k_norm_y(tk)
+        if pos_txt is not None:
+            tq, tk = apply_rotary_emb(tq, tk, freqs_cis=pos_txt)
     # Match existing Full/Local padding behavior: the existing attention mask,
     # when provided, governs Local/text. Do not repurpose QDM's separate mask.
     text_valid = None if attn_mask is None else attn_mask.reshape(b, -1)[:, :y.shape[1]].bool()

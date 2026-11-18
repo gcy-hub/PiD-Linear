@@ -40,11 +40,13 @@ def _coordinates(layout,down_factor,device):
     return sid,img,y,x,extra
 
 
-def _predicate(layout,radius,down_factor,device,window_shape='circle',kernel_size=11):
+def _predicate(layout,radius,down_factor,device,window_shape='circle',kernel_size=11,
+               query_start=0,query_length=None):
     sid,img,y,x,extra=_coordinates(layout,down_factor,str(device))
-    qlen,klen=layout.length,len(sid)
+    qlen=layout.length if query_length is None else query_length
+    klen=len(sid)
     def mask(b,h,q,k):
-        qi=q.clamp(0,qlen-1);ki=k.clamp(0,klen-1)
+        qi=(q.clamp(0,qlen-1)+query_start).clamp(0,layout.length-1);ki=k.clamp(0,klen-1)
         same=sid[qi]==sid[ki]
         base=(~extra[ki])
         if window_shape=='circle':
@@ -56,15 +58,21 @@ def _predicate(layout,radius,down_factor,device,window_shape='circle',kernel_siz
     return mask,klen
 
 
-def clear_mask(layout,radius,device,down_factor=1,window_shape='circle',kernel_size=11):
-    fn,klen=_predicate(layout,radius,down_factor,device,window_shape,kernel_size)
-    return fn(None,None,torch.arange(layout.length,device=device)[:,None],torch.arange(klen,device=device)[None,:])
+def clear_mask(layout,radius,device,down_factor=1,window_shape='circle',kernel_size=11,
+               query_start=0,query_length=None):
+    fn,klen=_predicate(layout,radius,down_factor,str(device),window_shape,kernel_size,
+                       query_start,query_length)
+    qlen=layout.length if query_length is None else query_length
+    return fn(None,None,torch.arange(qlen,device=device)[:,None],torch.arange(klen,device=device)[None,:])
 
 @lru_cache(maxsize=24)
-def _block_mask(layout,radius,down_factor,device,window_shape='circle',kernel_size=11):
+def _block_mask(layout,radius,down_factor,device,window_shape='circle',kernel_size=11,
+                query_start=0,query_length=None):
     from torch.nn.attention.flex_attention import create_block_mask
-    fn,klen=_predicate(layout,radius,down_factor,device,window_shape,kernel_size)
-    return create_block_mask(fn,B=None,H=None,Q_LEN=layout.length,KV_LEN=klen,device=device,_compile=True)
+    fn,klen=_predicate(layout,radius,down_factor,device,window_shape,kernel_size,
+                       query_start,query_length)
+    qlen=layout.length if query_length is None else query_length
+    return create_block_mask(fn,B=None,H=None,Q_LEN=qlen,KV_LEN=klen,device=device,_compile=True)
 
 @lru_cache(maxsize=1)
 def _kernel():
@@ -93,9 +101,14 @@ class ClearAttention(nn.Module):
             offset+=h*w+t
         return torch.cat(chunks,2)
 
-    def forward(self,q,k,v,layout,proportional_attention=False):
+    def forward(self,q,k,v,layout,proportional_attention=False,query_start=0):
         q,k=q.to(v.dtype),k.to(v.dtype)
-        if q.shape[-2]!=layout.length or k.shape[-2]!=layout.length: raise ValueError('Attention/layout length mismatch')
+        query_length=q.shape[-2]
+        if query_start < 0 or query_start + query_length != layout.length:
+            raise ValueError('Attention/layout query length mismatch')
+        if query_start and (proportional_attention or self.window_size is None):
+            raise ValueError('Partial queries require unscaled local attention')
+        if k.shape[-2] != layout.length: raise ValueError('Attention/layout key length mismatch')
         if proportional_attention:
             ratios=[]
             for h,w,t in layout.samples:
@@ -119,12 +132,14 @@ class ClearAttention(nn.Module):
             # Ampere's 99 KiB shared-memory limit cannot fit PyTorch 2.10's
             # default 128x128 head-dim128 kernel with distinct Q/K/V tensors.
             # Keep the exact sparse computation and use smaller native tiles.
-            options={}
+            options={'BACKEND': 'TRITON'} if query_start else {}
             if torch.cuda.get_device_capability(q.device)[0]<9:
-                options=dict(BLOCK_M=64,BLOCK_N=64,num_stages=2,
+                options.update(BLOCK_M=64,BLOCK_N=64,num_stages=2,
                     bwd_BLOCK_M1=32,bwd_BLOCK_N1=64,bwd_BLOCK_M2=64,bwd_BLOCK_N2=32)
-            return _kernel()(q,k,v,block_mask=_block_mask(layout,self.window_size,self.down_factor,str(q.device),self.window_shape,self.kernel_size),kernel_options=options)
-        return F.scaled_dot_product_attention(q,k,v,attn_mask=clear_mask(layout,self.window_size,q.device,self.down_factor,self.window_shape,self.kernel_size))
+            return _kernel()(q,k,v,block_mask=_block_mask(layout,self.window_size,self.down_factor,str(q.device),self.window_shape,self.kernel_size,
+                                                               query_start,query_length),kernel_options=options)
+        return F.scaled_dot_product_attention(q,k,v,attn_mask=clear_mask(layout,self.window_size,q.device,self.down_factor,self.window_shape,self.kernel_size,
+                                                                          query_start,query_length))
 
 
 def sample_slices(layout):

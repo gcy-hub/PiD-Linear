@@ -60,8 +60,10 @@ def joint_memory(q, k, v, beta, write, read=None, mask=None, sparse=False, chunk
                 result = result * read[:, ix, bank, None, None]
                 if torch.is_grad_enabled():
                     out = out.index_add(1, ix, result)
+                elif sparse and read is write:
+                    # Fixed one-hot banks are disjoint during inference.
+                    out.index_copy_(1, ix, result)
                 else:
-                    # Avoid copying the entire image output for every token chunk.
                     out.index_add_(1, ix, result)
         if mask is not None:
             out = out * mask[:, :, None, None]
