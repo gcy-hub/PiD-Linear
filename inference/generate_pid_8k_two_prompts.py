@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Generate two independent 8192x8192 images with PiD step 7629.
+"""Generate two independent 8192x8192 images with exported or original PiD.
 
 Each job performs one complete global 8K decode on one GPU. No tiling or
-stitching is used. Run from the PiD-Linear repository, or set PID_REPO_ROOT.
+stitching is used. Local imports resolve from this script’s repository.
 """
 import argparse
+from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
 import gc
 import importlib
@@ -14,6 +15,9 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+
+REPO_ROOT = Path(os.environ.get("PID_REPO_ROOT", Path(__file__).resolve().parents[1])).resolve()
+sys.path.insert(0, str(REPO_ROOT))
 
 import torch
 from PIL import Image
@@ -45,7 +49,6 @@ PROMPTS = (
     "dim room. Warm amber highlights, deep brown shadows, subtle film grain, natural skin texture, "
     "sharp focus on the eyes, and shallow depth of field. One continuous, edge-to-edge photograph.",
 )
-NEGATIVE_PROMPT = ""
 
 
 def save_tensor(value, path):
@@ -54,11 +57,16 @@ def save_tensor(value, path):
     temporary.replace(path)
 
 
-def config_for(repo, weights_root):
-    config = OmegaConf.load(repo / "config.yaml")
+def config_for(repo, weights_root, model="export"):
+    config = OmegaConf.load(repo / "config.yaml" if model == "export"
+                            else REPO_ROOT / "configs/default.yaml")
     root = Path(weights_root).expanduser()
     with open_dict(config):
-        config.model.resources.export = str(repo)
+        config.model.family = "pid"
+        config.model.architecture = "native"
+        config.model.resources.export = str(repo) if model == "export" else None
+        config.runtime.dtype = "bfloat16"
+        config.runtime.gradient_checkpointing = False
         config.model.resources.weights = str(root / "PiD/checkpoints/PiD_v1pt5_res2kto4k_sr4x_official_flux_undistilled/model_ema_bf16.pth")
         config.model.resources.text_encoder = str(root / "gemma-2-2b-it")
         config.model.resources.tokenizer = None
@@ -107,21 +115,22 @@ def make_latent(weights_root, prompt, seed, device, output):
 
 
 def repo_root():
-    return Path(os.environ.get("PID_REPO_ROOT", ".")).resolve()
+    return Path(os.environ.get("PID_REPO_ROOT", REPO_ROOT)).resolve()
 
 
-def run_job(repo, weights_root, output_root, job_index, gpu, seed, steps, cfg, shift):
+def run_job(repo, weights_root, output_root, job_index, gpu, seed, steps, cfg, shift, model="export"):
     output = output_root / f"image-{job_index + 1:02d}"
     output.mkdir(parents=True, exist_ok=True)
-    prompt = PROMPTS[job_index]
     started = time.perf_counter()
     environment = dict(os.environ, CUDA_VISIBLE_DEVICES=str(gpu), PYTHONUNBUFFERED="1",
                        HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
     log = output / "generation.log"
-    command = [sys.executable, str(Path(__file__)), "--job", str(job_index),
-               "--repo", str(repo), "--weights-root", str(weights_root),
+    command = [sys.executable, str(Path(__file__).resolve()), "--job", str(job_index),
+               "--model", model, "--weights-root", str(weights_root),
                "--output", str(output), "--seed", str(seed), "--steps", str(steps),
                "--cfg", str(cfg), "--shift", str(shift)]
+    if repo is not None:
+        command += ["--repo", str(repo)]
     with log.open("w") as handle:
         subprocess.run(command, cwd=repo_root(), env=environment, stdout=handle,
                        stderr=subprocess.STDOUT, check=True)
@@ -129,28 +138,27 @@ def run_job(repo, weights_root, output_root, job_index, gpu, seed, steps, cfg, s
 
 
 def generate_job(args):
-    repo = Path(args.repo).expanduser().resolve()
+    repo = args.repo
     output = Path(args.output).expanduser().resolve()
-    config = config_for(repo, args.weights_root)
+    output.mkdir(parents=True, exist_ok=True)
+    config = config_for(repo, args.weights_root, args.model)
     device = torch.device("cuda", 0)
     torch.cuda.set_device(device)
     prompt = PROMPTS[args.job]
+    generation_started = time.perf_counter()
     encode_text(config, prompt, device, output)
     make_latent(args.weights_root, prompt, args.seed, device, output)
 
-    from algorithms import build_attention
-    from data.encoders import build_encoder  # ensures encoder dependencies are loaded consistently
-    from models import build_model
-    from models.attention import fuse_lora_projections
+    decode_started = time.perf_counter()
+    net, fused = load_decoder(config, device, args.model)
     from pid._src.common.runtime import sample
     from pid._src.vdn_pid.attention import execution_mode
 
-    model = build_model(config, device=device, algorithm_factory=build_attention)
-    net = model.base.eval().requires_grad_(False)
-    fused = fuse_lora_projections(net)
     text = torch.load(output / "text.pt", map_location=device, weights_only=True)
     latent = torch.load(output / "latent.pt", map_location=device, weights_only=True)["latent"].to(torch.bfloat16)
-    with torch.inference_mode(), execution_mode(net, inference=True):
+    with torch.inference_mode(), (execution_mode(net, inference=True)
+                                  if args.model == "export" else nullcontext()):
+        torch.cuda.synchronize(device)
         started = time.perf_counter()
         generated = sample(
             net, text["positive"]["embeddings"], text["positive"]["mask"],
@@ -159,26 +167,44 @@ def generate_job(args):
             cfg=args.cfg, shift=args.shift, sigma=0.0,
         )
         torch.cuda.synchronize(device)
-    seconds = time.perf_counter() - started
+        seconds = time.perf_counter() - started
     pixels = ((generated[0].float().clamp(-1, 1) + 1) * 127.5).round().byte()
     image_path = output / "pid-8192.png"
     Image.fromarray(pixels.permute(1, 2, 0).cpu().numpy()).save(image_path, compress_level=1)
+    finished = time.perf_counter()
     with Image.open(image_path) as image:
         assert image.size == (8192, 8192) and image.mode == "RGB"
     (output / "result.json").write_text(json.dumps({
         "prompt": prompt, "seed": args.seed, "width": 8192, "height": 8192,
         "steps": args.steps, "cfg": args.cfg, "shift": args.shift,
+        "model": args.model, "repo": str(repo) if repo else None,
+        "generation_seconds": finished - generation_started,
+        "decode_seconds": finished - decode_started,
         "sampling_seconds": seconds, "fused_lora_projections": fused,
         "gpu": os.environ.get("CUDA_VISIBLE_DEVICES"), "global_decode": True,
     }, indent=2, ensure_ascii=False) + "\n")
-    print(f"job {args.job + 1}: global 8192 decode {seconds:.2f}s", flush=True)
+    print(f"job {args.job + 1}: generation {finished - generation_started:.2f}s, "
+          f"sampling {seconds:.2f}s", flush=True)
+
+
+def load_decoder(config, device, model):
+    if model == "original":
+        from models.base import load_native
+        return load_native(config, device).eval().requires_grad_(False), 0
+    from algorithms import build_attention
+    from models import build_model
+    from models.attention import fuse_lora_projections
+    net = build_model(config, device=device, algorithm_factory=build_attention).base
+    net.eval().requires_grad_(False)
+    return net, fuse_lora_projections(net)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--model", choices=("export", "original"), default="export")
+    parser.add_argument("--repo", type=Path, help="Export directory containing config.yaml and model.safetensors")
     parser.add_argument("--weights-root", type=Path, default=Path.home() / "huggingface_ckpts")
-    parser.add_argument("--output", type=Path, default=Path("./outputs/pid-step7629-8k-two-prompts"))
+    parser.add_argument("--output", type=Path, help="Defaults to outputs/pid-{model}-8k-two-prompts")
     parser.add_argument("--gpus", default="0,1", help="Two physical GPU IDs, one per prompt")
     parser.add_argument("--seed", type=int, default=1045)
     parser.add_argument("--steps", type=int, default=25)
@@ -186,7 +212,12 @@ def main():
     parser.add_argument("--shift", type=float, default=6.0)
     parser.add_argument("--job", type=int, choices=(0, 1))
     args = parser.parse_args()
-    args.repo = args.repo.expanduser().resolve()
+    if args.model == "export" and args.repo is None:
+        parser.error("--repo is required for --model export")
+    if args.repo is not None:
+        args.repo = args.repo.expanduser().resolve()
+    if args.output is None:
+        args.output = Path(f"./outputs/pid-{args.model}-8k-two-prompts")
     args.weights_root = args.weights_root.expanduser().resolve()
     if args.job is not None:
         generate_job(args)
@@ -199,13 +230,18 @@ def main():
     output = args.output.expanduser().resolve()
     output.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        jobs = [pool.submit(run_job, args.repo, args.weights_root, output, i,
-                            gpus[i], args.seed + i, args.steps, args.cfg, args.shift)
-                for i in (0, 1)]
-        for job in jobs:
-            job.result()
+    job_args = [(args.repo, args.weights_root, output, i, gpus[i], args.seed + i,
+                 args.steps, args.cfg, args.shift, args.model) for i in (0, 1)]
+    if gpus[0] == gpus[1]:
+        for values in job_args:
+            run_job(*values)
+    else:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            jobs = [pool.submit(run_job, *values) for values in job_args]
+            for job in jobs:
+                job.result()
     (output / "run.json").write_text(json.dumps({
+        "model": args.model, "repo": str(args.repo) if args.repo else None,
         "prompts": list(PROMPTS), "gpus": gpus, "seed": args.seed,
         "steps": args.steps, "cfg": args.cfg, "shift": args.shift,
         "width": 8192, "height": 8192, "global_decode": True,
