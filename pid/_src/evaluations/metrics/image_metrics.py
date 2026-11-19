@@ -1950,6 +1950,7 @@ class VisualQualityR1(BaseMetric):
 
     def _load_transformers(self):
         from transformers import AutoModelForVision2Seq, AutoProcessor
+        from transformers.utils import is_flash_attn_2_available
 
         torch_dtype = {"bfloat16": th.bfloat16, "float16": th.float16}.get(self.dtype, th.bfloat16)
         self._processor = AutoProcessor.from_pretrained(self.model_name, trust_remote_code=True)
@@ -1965,7 +1966,7 @@ class VisualQualityR1(BaseMetric):
             torch_dtype=torch_dtype,
             device_map=self.device,
             trust_remote_code=True,
-            attn_implementation="flash_attention_2",
+            attn_implementation="flash_attention_2" if is_flash_attn_2_available() else "sdpa",
         ).eval()
 
     def _load_vllm(self):
